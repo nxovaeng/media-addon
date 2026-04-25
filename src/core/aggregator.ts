@@ -128,16 +128,12 @@ export class Aggregator {
   }
 
   private getFromCache(id: string): Stream[] | null {
-    const row = db.prepare('SELECT data FROM stream_cache WHERE id = ? AND expires_at > ?').get(id, Math.floor(Date.now() / 1000)) as any;
-    return row ? JSON.parse(row.data) : null;
+    return db.get(id) as Stream[] | null;
   }
 
   private saveToCache(id: string, data: Stream[]) {
-    const ttl = 3600;
-    const now = Math.floor(Date.now() / 1000);
-    const type = id.split(':')[0];
-    db.prepare('REPLACE INTO stream_cache (id, type, data, created_at, expires_at) VALUES (?, ?, ?, ?, ?)')
-      .run(id, type, JSON.stringify(data), now, now + ttl);
+    const ttl = 3600; // 1 hour
+    db.set(id, data, ttl);
   }
 }
 

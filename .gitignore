@@ -206,3 +206,5 @@ credentials.json
 # If you want to ignore specific provider files during testing
 # providers/*/test.js
 data/
+bin/
+

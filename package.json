@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
+  "bin": "dist/server.js",
   "directories": {
     "doc": "docs"
   },
@@ -10,7 +11,9 @@
     "dev": "ts-node src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "package": "npm run build && bun build ./src/server.ts --compile --target=bun-linux-x64 --outfile bin/addon-linux",
+    "package:win": "npm run build && bun build ./src/server.ts --compile --target=bun-windows-x64-modern --outfile bin/addon-win.exe"
   },
   "keywords": [],
   "author": "",
@@ -18,16 +21,15 @@
   "type": "commonjs",
   "dependencies": {
     "axios": "^1.15.2",
-    "better-sqlite3": "^12.9.0",
     "cheerio": "^1.2.0",
     "chokidar": "^5.0.0",
     "dotenv": "^17.4.2",
     "hono": "^4.12.15",
+    "node-cache": "^5.1.2",
     "stremio-addon-sdk": "^1.6.10",
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.6.0",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.3"

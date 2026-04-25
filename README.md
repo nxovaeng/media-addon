@@ -27,8 +27,7 @@ docker-compose up -d
    - `TMDB_API_KEY`
    - `MEDIAFLOW_PROXY_URL`
    - `MEDIAFLOW_API_PASSWORD`
-   - `DATABASE_PATH` 设置为 `/app/data/aggregator.db`
-4. **持久化存储**：如果你希望缓存数据在重启后不丢失，请在平台上挂载一个 Volume 到 `/app/data`。
+4. **无需持久化存储**：由于插件现在使用内存缓存，重启后缓存会重置。
 
 ### 3. 发布到 Stremio
 部署完成后，你将获得一个公网 URL（例如 `https://your-addon.up.railway.app`）。
@@ -42,7 +41,6 @@ docker-compose up -d
 | 变量名 | 说明 | 示例 |
 | :--- | :--- | :--- |
 | `PORT` | 服务端口 | `3000` |
-| `DATABASE_PATH` | SQLite 数据库路径 | `/app/data/aggregator.db` |
 | `TMDB_API_KEY` | TMDB API 密钥 | `your_key` |
 | `BANGUMI_API_URL` | Bangumi API 地址 | `https://api.bgm.tv` |
 | `MEDIAFLOW_PROXY_URL` | MediaFlow 代理地址 | `http://proxy:8080` |

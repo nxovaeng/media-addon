@@ -89,15 +89,12 @@ export class MetadataService {
   }
 
   private getFromCache(id: string): MediaItem | null {
-    const row = db.prepare('SELECT data FROM meta_cache WHERE id = ? AND expires_at > ?').get(id, Math.floor(Date.now() / 1000)) as any;
-    return row ? JSON.parse(row.data) : null;
+    return db.get(id) as MediaItem | null;
   }
 
   private saveToCache(id: string, data: MediaItem) {
     const ttl = data.type === 'movie' ? 24 * 3600 : 6 * 3600;
-    const now = Math.floor(Date.now() / 1000);
-    db.prepare('REPLACE INTO meta_cache (id, type, data, created_at, expires_at) VALUES (?, ?, ?, ?, ?)')
-      .run(id, data.type, JSON.stringify(data), now, now + ttl);
+    db.set(id, data, ttl);
   }
 }
 
