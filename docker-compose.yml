@@ -28,7 +28,6 @@ services:
       
       # 动漫资源的 API 地址 (保持默认即可)
       - BANGUMI_API_URL=https://api.bgm.tv
-      - MACCMS_BASE=https://donghuafun.com/api.php/provide/vod/at/json
       
       # 日志级别 (可选: debug, info, warn, error)
       - LOG_LEVEL=info

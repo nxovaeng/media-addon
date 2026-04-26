@@ -174,40 +174,46 @@ const donghuastreamProvider: Provider = {
         
         try {
             let detailUrl = '';
-            const searchQueries = [item.title, ...(item.aliases || [])];
 
-            for (const query of searchQueries) {
-                if (!query) continue;
-                const searchUrl = `${SITE_CONFIG.mainUrl}/?s=${encodeURIComponent(query)}`;
-                const searchRes = await axios.get(searchUrl, { headers: DEFAULT_HEADERS, timeout: 10000 });
-                const $ = cheerio.load(searchRes.data);
-                
-                // Collect all matching results, then pick the best one
-                const candidates: Array<{ url: string; title: string; score: number }> = [];
-                $('div.listupd > article').each((_, el) => {
-                    const link = $(el).find('div.bsx > a');
-                    const title = link.attr('title') || link.text().trim();
-                    const href = link.attr('href') || '';
-                    const validTitles = [item.title, ...(item.aliases || [])].map(t => t.toLowerCase());
-                    const titleLower = title.toLowerCase();
-                    const isMatch = validTitles.some(t => titleLower.includes(t) || t.includes(titleLower));
-                    if (isMatch && href) {
-                        let score = 0;
-                        // Exact match gets highest score
-                        if (validTitles.some(t => t === titleLower)) score += 100;
-                        // Penalize Movie/OVA/Special when looking for episode
-                        if (item.episode && /movie|ova|special|film/i.test(title)) score -= 50;
-                        // Shorter title = more likely the main series
-                        score -= title.length * 0.1;
-                        candidates.push({ url: href, title, score });
+            // Fast path: If the ID is already from this provider, use it directly
+            if (item.id.startsWith(`agg:${SITE_CONFIG.id}:`)) {
+                detailUrl = item.id.replace(`agg:${SITE_CONFIG.id}:`, '');
+            } else {
+                const searchQueries = [item.title, ...(item.aliases || [])];
+
+                for (const query of searchQueries) {
+                    if (!query) continue;
+                    const searchUrl = `${SITE_CONFIG.mainUrl}/?s=${encodeURIComponent(query)}`;
+                    const searchRes = await axios.get(searchUrl, { headers: DEFAULT_HEADERS, timeout: 10000 });
+                    const $ = cheerio.load(searchRes.data);
+                    
+                    // Collect all matching results, then pick the best one
+                    const candidates: Array<{ url: string; title: string; score: number }> = [];
+                    $('div.listupd > article').each((_, el) => {
+                        const link = $(el).find('div.bsx > a');
+                        const title = link.attr('title') || link.text().trim();
+                        const href = link.attr('href') || '';
+                        const validTitles = [item.title, ...(item.aliases || [])].map(t => t.toLowerCase());
+                        const titleLower = title.toLowerCase();
+                        const isMatch = validTitles.some(t => titleLower.includes(t) || t.includes(titleLower));
+                        if (isMatch && href) {
+                            let score = 0;
+                            // Exact match gets highest score
+                            if (validTitles.some(t => t === titleLower)) score += 100;
+                            // Penalize Movie/OVA/Special when looking for episode
+                            if (item.episode && /movie|ova|special|film/i.test(title)) score -= 50;
+                            // Shorter title = more likely the main series
+                            score -= title.length * 0.1;
+                            candidates.push({ url: href, title, score });
+                        }
+                    });
+
+                    if (candidates.length > 0) {
+                        candidates.sort((a, b) => b.score - a.score);
+                        detailUrl = candidates[0].url;
+                        console.log(`[Donghuastream] Matched: "${candidates[0].title}" (score: ${candidates[0].score.toFixed(1)})`);
+                        break;
                     }
-                });
-
-                if (candidates.length > 0) {
-                    candidates.sort((a, b) => b.score - a.score);
-                    detailUrl = candidates[0].url;
-                    console.log(`[Donghuastream] Matched: "${candidates[0].title}" (score: ${candidates[0].score.toFixed(1)})`);
-                    break;
                 }
             }
 

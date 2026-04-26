@@ -11,6 +11,7 @@ import { resolveDonghuaPlanet } from './donghuaplanet';
 import { buildHlsProxyUrl, buildStreamProxyUrl, resolveViaMediaflowExtractor } from './mediaflow';
 import { Stream } from '../types';
 import { config } from '../config';
+import { db } from './db';
 
 const EXTRACTOR_MAP: Record<string, string> = {
   'dood': 'doodstream', // Handles dood.watch, doodstream.com, etc
@@ -92,10 +93,19 @@ export async function resolveEmbed(
 
     const matchedKey = Object.keys(EXTRACTOR_MAP).find(key => hostname.includes(key));
     if (matchedKey) {
+      const cacheKey = `resolved:${embedUrl}`;
+      const cached = db.get(cacheKey) as Stream | null;
+      if (cached) {
+        console.log(`[${providerName}] Returning cached extractor result for: ${hostname}`);
+        return cached;
+      }
+
       const extractorName = EXTRACTOR_MAP[matchedKey];
       const extracted = await resolveViaMediaflowExtractor(extractorName, embedUrl);
       if (extracted) {
-        return buildExtractorStreamResult(extracted, embedUrl, serverLabel, matchedKey);
+        const stream = buildExtractorStreamResult(extracted, embedUrl, serverLabel, matchedKey);
+        db.set(cacheKey, stream, 1800); // Cache for 30 minutes
+        return stream;
       }
     }
 
