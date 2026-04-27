@@ -1,5 +1,5 @@
 import { addonBuilder } from 'stremio-addon-sdk';
-import { aggregator } from './core/aggregator';
+import { movieAggregator, seriesAggregator, getAggregatorByProviderId, getAggregatorByType } from './core/aggregator';
 import { metadataService } from './core/metadataService';
 
 const manifest = {
@@ -23,6 +23,15 @@ const manifest = {
         { name: 'search', isRequired: false },
         { name: 'skip', isRequired: false }
       ]
+    },
+    {
+      type: 'movie',
+      id: 'tmdb_popular',
+      name: 'TMDB 热门电影',
+      extra: [
+        { name: 'search', isRequired: false },
+        { name: 'skip', isRequired: false }
+      ]
     }
   ]
 };
@@ -32,21 +41,29 @@ const builder = new addonBuilder(manifest);
 
 builder.defineStreamHandler(async ({ type, id }) => {
   console.log(`[Addon] Stream request: ${type} ${id}`);
-  const streams = await aggregator.getStreams(type, id);
+  let aggregatorRef = getAggregatorByType(type);
+
+  if (id.startsWith('agg:')) {
+    const providerId = id.slice('agg:'.length).split(':')[0];
+    const providerAgg = getAggregatorByProviderId(providerId);
+    if (providerAgg) aggregatorRef = providerAgg;
+  }
+
+  const streams = await aggregatorRef.getStreams(type, id);
   return { streams };
 });
 
 builder.defineMetaHandler(async ({ type, id }) => {
   console.log(`[Addon] Meta request: ${type} ${id}`);
 
-  // Handle agg: IDs
   if (id.startsWith('agg:')) {
-    const meta = await aggregator.getMeta(type, id);
+    const providerId = id.slice('agg:'.length).split(':')[0];
+    const aggregatorRef = getAggregatorByProviderId(providerId) || getAggregatorByType(type);
+    const meta = await aggregatorRef.getMeta(type, id);
     if (!meta) return { meta: null };
     return { meta };
   }
 
-  // Handle IMDB/BGM IDs
   const meta = await metadataService.getMeta(id, type);
   if (!meta) return { meta: null };
 
@@ -65,9 +82,13 @@ builder.defineMetaHandler(async ({ type, id }) => {
 builder.defineCatalogHandler(async ({ type, id, extra }) => {
   console.log(`[Addon] Catalog request: ${type} ${id} ${JSON.stringify(extra)}`);
 
-  // Aggregated catalog (and search)
-  if (id === 'donghua_hot' || (extra && extra.search)) {
-    const metas = await aggregator.getCatalog(type, id, extra);
+  let aggregatorRef = getAggregatorByType(type);
+  if (id === 'donghua_hot' || id === 'tmdb_popular') {
+    aggregatorRef = id === 'tmdb_popular' ? movieAggregator : seriesAggregator;
+  }
+
+  if (id === 'donghua_hot' || id === 'tmdb_popular' || (extra && extra.search)) {
+    const metas = await aggregatorRef.getCatalog(type, id, extra);
     return { metas };
   }
   return { metas: [] };

@@ -27,6 +27,8 @@ const EXTRACTOR_MAP: Record<string, string> = {
   'ok.ru': 'okru', // IMPORTANT: Maps ok.ru to the 'okru' extractor
   'voe': 'voe',
   'vidmoly': 'vidmoly',
+  'vidlink': 'vidlink',
+  'vidlink.pro': 'vidlink',
   'supervideo': 'supervideo',
   'mp4upload': 'mp4upload'
 };

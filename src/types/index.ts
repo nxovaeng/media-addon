@@ -64,6 +64,7 @@ export interface Meta {
   runtime?: string;
   language?: string;
   country?: string;
+  year?: number;
   awards?: string;
   website?: string;
   behaviorHints?: {

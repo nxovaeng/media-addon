@@ -1,10 +1,12 @@
-import { providerManager } from './providerManager';
+import { getProvidersByType, movieProviders, seriesProviders } from './providerRegistry';
 import { metadataService } from './metadataService';
 import { wrapProxyUrl } from '../utils/mediaflow';
 import { db } from '../utils/db';
-import { MediaItem, Stream, Meta } from '../types';
+import { MediaItem, Stream, Meta, Provider } from '../types';
 
 export class Aggregator {
+  constructor(private providers: Provider[]) {}
+
   public async getStreams(type: string, id: string): Promise<Stream[]> {
     const cached = this.getFromCache(`streams:${id}`);
     if (cached) return cached;
@@ -17,21 +19,17 @@ export class Aggregator {
       if (colonIdx === -1) return [];
       const providerId = afterAgg.slice(0, colonIdx);
 
-      const providers = providerManager.getEnabledProviders();
-      const provider = providers.find(p => p.id === providerId);
-      if (!provider) return [];
+      const provider = this.providers.find(p => p.id === providerId);
+      if (!provider || !provider.resolveMediaItem) return [];
 
-      if (!provider.resolveMediaItem) return [];
       const resolved = await provider.resolveMediaItem(id, type).catch(() => null);
       if (!resolved) return [];
       mediaItem = resolved;
     } else {
-      // IMDB/BGM IDs — look up via metadataService
       const meta = await metadataService.getMeta(id, type);
       if (!meta) return [];
 
       mediaItem = { ...meta } as MediaItem;
-
       if (type !== 'movie') {
         const idParts = id.split(':');
         if (idParts.length > 2) {
@@ -41,8 +39,7 @@ export class Aggregator {
       }
     }
 
-    const providers = providerManager.getEnabledProviders();
-    const streamPromises = providers.map(async (p) => {
+    const streamPromises = this.providers.map(async (p) => {
       try {
         const streams = await p.getStreams(mediaItem);
         return streams.map(s => {
@@ -70,8 +67,6 @@ export class Aggregator {
         const res = parseInt(match[1]);
         return res >= 720;
       }
-      // If no quality tag found, keep it if it's 'Auto' or similar, but 
-      // generally we expect our providers to tag them now.
       return true;
     });
 
@@ -83,12 +78,9 @@ export class Aggregator {
       const resA = getRes(a.name || '');
       const resB = getRes(b.name || '');
 
-      if (resA !== resB) return resB - resA; // Higher resolution first
-
-      // Fallback for 4K etc
+      if (resA !== resB) return resB - resA;
       if ((a.name || '').includes('4K')) return -1;
       if ((b.name || '').includes('4K')) return 1;
-
       return 0;
     });
 
@@ -100,11 +92,8 @@ export class Aggregator {
   }
 
   public async getCatalog(type: string, id: string, extra: any): Promise<Meta[]> {
-    const providers = providerManager.getEnabledProviders();
-
-    // For search queries, aggregate across all providers
     if (extra?.search) {
-      const catalogPromises = providers.map(async (p) => {
+      const catalogPromises = this.providers.map(async (p) => {
         if (p.getCatalog) {
           try {
             return await p.getCatalog(type, extra);
@@ -118,8 +107,6 @@ export class Aggregator {
 
       const results = await Promise.all(catalogPromises);
       const flattened = results.flat();
-
-      // Deduplicate by name
       const seen = new Set<string>();
       return flattened.filter(m => {
         if (seen.has(m.name)) return false;
@@ -128,15 +115,30 @@ export class Aggregator {
       });
     }
 
-    // For homepage catalog, use only donghuaworld (popular page)
-    const donghuaworld = providers.find(p => p.id === 'donghuaworld');
-    if (donghuaworld?.getCatalog) {
-      try {
-        return await donghuaworld.getCatalog(type, extra);
-      } catch (err) {
-        console.error(`[Aggregator] DonghuaWorld catalog failed:`, err);
-        return [];
+    if (id === 'donghua_hot') {
+      const provider = this.providers.find(p => p.id === 'donghuaworld');
+      if (provider?.getCatalog) {
+        try {
+          return await provider.getCatalog(type, extra);
+        } catch (err) {
+          console.error(`[Aggregator] DonghuaWorld catalog failed:`, err);
+          return [];
+        }
       }
+      return [];
+    }
+
+    if (id === 'tmdb_popular') {
+      const provider = this.providers.find(p => p.id === 'vidlink');
+      if (provider?.getCatalog) {
+        try {
+          return await provider.getCatalog(type, extra);
+        } catch (err) {
+          console.error(`[Aggregator] VidLink catalog failed:`, err);
+          return [];
+        }
+      }
+      return [];
     }
 
     return [];
@@ -146,7 +148,6 @@ export class Aggregator {
     const cached = db.get(`meta:${id}`) as Meta | null;
     if (cached) return cached;
 
-    const providers = providerManager.getEnabledProviders();
     if (id.startsWith('agg:')) {
       const afterAgg = id.slice('agg:'.length);
       const colonIdx = afterAgg.indexOf(':');
@@ -154,8 +155,8 @@ export class Aggregator {
       const providerId = afterAgg.slice(0, colonIdx);
       const internalId = afterAgg.slice(colonIdx + 1);
 
-      const provider = providers.find(p => p.id === providerId);
-      if (provider && provider.getMeta) {
+      const provider = this.providers.find(p => p.id === providerId);
+      if (provider?.getMeta) {
         try {
           const meta = await provider.getMeta(internalId, type);
           if (meta) db.set(`meta:${id}`, meta, 3600);
@@ -166,6 +167,7 @@ export class Aggregator {
         }
       }
     }
+
     return null;
   }
 
@@ -174,9 +176,19 @@ export class Aggregator {
   }
 
   private saveToCache(id: string, data: Stream[]) {
-    const ttl = 3600; // 1 hour
-    db.set(id, data, ttl);
+    db.set(id, data, 3600);
   }
 }
 
-export const aggregator = new Aggregator();
+export const movieAggregator = new Aggregator(getProvidersByType('movie'));
+export const seriesAggregator = new Aggregator(getProvidersByType('series'));
+
+export function getAggregatorByType(type: string): Aggregator {
+  return type === 'movie' ? movieAggregator : seriesAggregator;
+}
+
+export function getAggregatorByProviderId(providerId: string): Aggregator | null {
+  if (movieProviders.some(p => p.id === providerId)) return movieAggregator;
+  if (seriesProviders.some(p => p.id === providerId)) return seriesAggregator;
+  return null;
+}
