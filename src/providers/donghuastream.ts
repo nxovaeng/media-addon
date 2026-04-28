@@ -35,7 +35,12 @@ const donghuastreamProvider: Provider = {
             const title = link.attr('title') || link.text().trim();
             const href = link.attr('href') || '';
             if (title && href) {
-                results.push({ id: `agg:${SITE_CONFIG.id}:${href}`, type: 'series', title });
+                results.push({ 
+                    id: `agg:${SITE_CONFIG.id}:${href}`, 
+                    type: 'series' as const, 
+                    name: title,
+                    title: title 
+                });
             }
         });
         return results;
@@ -54,9 +59,18 @@ const donghuastreamProvider: Provider = {
         const rawTitle = meta?.name || '';
         const aliases: string[] = meta?.aliases ? [...meta.aliases] : [];
         const title = rawTitle.replace(/\s+episode\s+\d+.*/i, '').replace(/\s+ep\.?\s*\d+.*/i, '').trim();
-        if (rawTitle !== title) aliases.push(rawTitle);
+        if (rawTitle && rawTitle !== title) aliases.push(rawTitle);
 
-        return { id, type: type as any, title, aliases, season: 1, episode: episodeNum };
+        const finalTitle = title || rawTitle || 'Unknown';
+        return { 
+            id, 
+            type: type as any, 
+            name: finalTitle,
+            title: finalTitle, 
+            aliases, 
+            season: 1, 
+            episode: episodeNum 
+        };
     },
 
     async getMeta(id: string, _type: string): Promise<Meta | null> {
@@ -141,7 +155,12 @@ const donghuastreamProvider: Provider = {
     async getCatalog(type: string, extra: any): Promise<Meta[]> {
         if (extra?.search) {
             const items = await this.search!(extra.search, type);
-            return items.map(i => ({ id: i.id, type: 'series', name: i.title }));
+            return items.map(i => ({ 
+                id: i.id, 
+                type: 'series' as const, 
+                name: i.title || i.name || 'Unknown',
+                title: i.title || i.name || 'Unknown'
+            }));
         }
         try {
             const skip = parseInt(extra?.skip || '0') || 0;
@@ -169,8 +188,9 @@ const donghuastreamProvider: Provider = {
     },
 
     async getStreams(item: MediaItem): Promise<Stream[]> {
+        const title = item.title || item.name || 'Unknown';
         const epLog = item.episode ? ` S${item.season}E${item.episode}` : '';
-        console.log(`[Donghuastream] Searching for: ${item.title}${epLog}`);
+        console.log(`[Donghuastream] Searching for: ${title}${epLog}`);
         
         try {
             let detailUrl = '';
@@ -193,7 +213,10 @@ const donghuastreamProvider: Provider = {
                         const link = $(el).find('div.bsx > a');
                         const title = link.attr('title') || link.text().trim();
                         const href = link.attr('href') || '';
-                        const validTitles = [item.title, ...(item.aliases || [])].map(t => t.toLowerCase());
+                        const currentTitle = item.title || item.name || '';
+                        const validTitles = [currentTitle, ...(item.aliases || [])]
+                            .filter((t): t is string => !!t)
+                            .map(t => t.toLowerCase());
                         const titleLower = title.toLowerCase();
                         const isMatch = validTitles.some(t => titleLower.includes(t) || t.includes(titleLower));
                         if (isMatch && href) {

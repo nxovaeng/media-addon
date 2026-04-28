@@ -1,6 +1,6 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
-import { Provider, MediaItem, Stream } from '../types';
+import { Provider, MediaItem, Stream, Subtitle } from '../types';
 import { config } from '../config';
 import { db } from '../utils/db';
 import { buildStreamProxyUrl } from '../utils/mediaflow';
@@ -224,6 +224,51 @@ async function getVideoQualities(
     }
 }
 
+/**
+ * Get subtitles for a media item.
+ */
+async function getSubtitles(mediaId: number, type: number): Promise<Subtitle[]> {
+    try {
+        const res = await axios.get(`${SHOWBOX_SEARCH}/index/subtitles`, {
+            params: { id: mediaId, type },
+            timeout: 10000,
+            headers: { 'Accept-Language': 'en' }
+        });
+
+        const list = res.data?.data;
+        if (!Array.isArray(list)) return [];
+
+        const subtitles: Subtitle[] = [];
+        const langMap: Record<string, string> = {
+            'English': 'eng',
+            'Chinese': 'chi',
+            'Chinese (Simplified)': 'chi',
+            'Chinese (Traditional)': 'zho',
+            'Spanish': 'spa',
+            'French': 'fre',
+            'German': 'ger',
+            'Japanese': 'jpn',
+            'Korean': 'kor',
+        };
+
+        for (const item of list) {
+            if (item.subtitles && Array.isArray(item.subtitles)) {
+                for (const sub of item.subtitles) {
+                    const lang = item.language || 'English';
+                    subtitles.push({
+                        id: sub.file_url, // Required field
+                        lang: langMap[lang] || lang,
+                        url: sub.file_url,
+                    });
+                }
+            }
+        }
+        return subtitles;
+    } catch (err) {
+        return [];
+    }
+}
+
 // ─── Provider ────────────────────────────────────────────────────────────────
 
 const superstreamProvider: Provider = {
@@ -237,38 +282,24 @@ const superstreamProvider: Provider = {
             return [];
         }
 
-        console.log(`[SuperStream] Resolving streams for: ${item.title} (${item.type})`);
-
-        // We need the IMDB ID — it should be in the item.id (format: tt1234567 or tt1234567:1:3)
-        let imdbId = '';
+        let imdbId = item.imdbid || '';
         const idParts = item.id.split(':');
-        if (idParts[0]?.startsWith('tt')) {
+        if (!imdbId && idParts[0]?.startsWith('tt')) {
             imdbId = idParts[0];
         }
 
         if (!imdbId) {
-            console.warn(`[SuperStream] No IMDB ID found in: ${item.id}`);
             return [];
         }
 
         try {
             // Step 1: Search by IMDB ID
             const searchResult = await searchByImdb(imdbId);
-            if (!searchResult) {
-                console.warn(`[SuperStream] Could not find media for ${imdbId}`);
-                return [];
-            }
-
-            console.log(`[SuperStream] Found media ID: ${searchResult.mediaId} (type: ${searchResult.type})`);
+            if (!searchResult) return [];
 
             // Step 2: Get share key
             const shareKey = await getShareKey(searchResult.mediaId, searchResult.type);
-            if (!shareKey) {
-                console.warn(`[SuperStream] Could not get share key for ${searchResult.mediaId}`);
-                return [];
-            }
-
-            console.log(`[SuperStream] Share key: ${shareKey}`);
+            if (!shareKey) return [];
 
             // Step 3: Get file list
             const files = await getFileList(
@@ -277,14 +308,12 @@ const superstreamProvider: Provider = {
                 item.type === 'series' ? item.episode : undefined
             );
 
-            if (files.length === 0) {
-                console.warn(`[SuperStream] No files found for share key ${shareKey}`);
-                return [];
-            }
+            if (files.length === 0) return [];
 
-            console.log(`[SuperStream] Found ${files.length} file(s)`);
+            // Step 4: Get subtitles
+            const subtitles = await getSubtitles(searchResult.mediaId, searchResult.type);
 
-            // Step 4: Get video qualities for each file
+            // Step 5: Get video qualities for each file
             const streams: Stream[] = [];
             for (const file of files) {
                 const qualities = await getVideoQualities(file.fid, shareKey);
@@ -293,7 +322,6 @@ const superstreamProvider: Provider = {
                     const qualityNum = getQualityFromLabel(q.quality);
                     const qualityLabel = qualityNum ? `${qualityNum}p` : q.quality;
 
-                    // Build proxy URL if mediaflow is available (for header injection)
                     const streamUrl = config.MEDIAFLOW_PROXY_URL
                         ? buildStreamProxyUrl(q.url, {
                             referer: FEBBOX_API + '/',
@@ -305,14 +333,14 @@ const superstreamProvider: Provider = {
                         url: streamUrl,
                         name: `[${qualityLabel}] SuperStream`,
                         description: `FebBox · ${q.size}`,
+                        subtitles: subtitles.length > 0 ? subtitles : undefined
                     });
                 }
             }
 
-            console.log(`[SuperStream] Returning ${streams.length} stream(s)`);
             return streams;
         } catch (err) {
-            console.error('[SuperStream] Stream resolution error:', err instanceof Error ? err.message : err);
+            console.error('[SuperStream] getStreams failed:', err instanceof Error ? err.message : String(err));
             return [];
         }
     }

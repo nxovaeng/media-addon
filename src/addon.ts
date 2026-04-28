@@ -12,13 +12,14 @@ const manifest = {
   resources: [
     'stream',
     'meta',
-    'catalog'
+    'catalog',
+    'subtitles'
   ],
   types: ['movie', 'series'],
-  idPrefixes: ['tt', 'bgm', 'agg:'],
-  catalogs: [
-    ...getEnabledAggregatorConfigs().map(config => ({
-      type: config.supportedTypes[0],
+  idPrefixes: ['tt', 'bgm', 'tmdb', 'agg:'],
+  catalogs: getEnabledAggregatorConfigs().flatMap(config =>
+    config.supportedTypes.map(type => ({
+      type: type,
       id: config.name,
       name: config.displayName,
       extra: [
@@ -26,7 +27,8 @@ const manifest = {
         { name: 'skip', isRequired: false }
       ]
     }))
-  ],
+  ),
+
   behaviorHints: {
     configurable: true,
     configurationRequired: true,
@@ -79,7 +81,7 @@ builder.defineStreamHandler(async (args: any) => {
   return { streams };
 });
 
-builder.defineMetaHandler(async ({ type, id }) => {
+builder.defineMetaHandler(async ({ type, id, config }) => {
   console.log(`[Addon] Meta request: ${type} ${id}`);
 
   if (id.startsWith('agg:')) {
@@ -94,14 +96,23 @@ builder.defineMetaHandler(async ({ type, id }) => {
   const meta = await metadataService.getMeta(id, type);
   if (!meta) return { meta: null };
 
+  // Explicitly return a Protocol-compliant MetaStandard object
   return {
     meta: {
       id: meta.id,
       type: meta.type,
-      name: meta.title,
-      poster: '',
-      background: '',
-      description: '',
+      name: meta.title || meta.name || '', // Map internal title to standard name
+      poster: meta.poster || '',
+      background: meta.background || '',
+      description: meta.description || '',
+      releaseInfo: meta.year ? `${meta.year}` : undefined, // Standard year field
+      links: meta.imdbid ? [
+        {
+          name: "IMDb",
+          category: "imdb",
+          url: `stremio:///detail/${type}/${meta.imdbid}`
+        }
+      ] : []
     }
   };
 });
@@ -109,32 +120,26 @@ builder.defineMetaHandler(async ({ type, id }) => {
 builder.defineCatalogHandler(async ({ type, id, extra }) => {
   console.log(`[Addon] Catalog request: ${type} ${id} ${JSON.stringify(extra)}`);
 
-  let aggregatorRef = getAggregatorByType(type);
+  const aggregatorRef = getAggregatorByName(id) || getAggregatorByType(type);
 
   if (!aggregatorRef) {
-    console.error(`[Addon] No aggregator found for type: ${type}`);
+    console.error(`[Addon] No aggregator found for catalog: ${id} (type: ${type})`);
     return { metas: [] };
   }
 
-  // 对特定目录使用专门的聚合器
-  if (id === 'donghua_hot') {
-    const donghuaAgg = getAggregatorByName('mainland-anime') || getAggregatorByName('mixed-anime');
-    if (donghuaAgg) aggregatorRef = donghuaAgg;
-  } else if (id === 'tmdb_popular') {
-    const movieAgg = getAggregatorByName('mainstream-movies');
-    if (movieAgg) aggregatorRef = movieAgg;
-  } else {
-    const namedAgg = getAggregatorByName(id);
-    if (namedAgg) {
-      aggregatorRef = namedAgg;
-    }
-  }
+  const metas = await aggregatorRef.getCatalog(type, id, extra);
+  return { metas };
+});
 
-  if (id === 'donghua_hot' || id === 'tmdb_popular' || getAggregatorByName(id) || (extra && extra.search)) {
-    const metas = await aggregatorRef.getCatalog(type, id, extra);
-    return { metas };
-  }
-  return { metas: [] };
+builder.defineSubtitlesHandler(async (args: { type: string, id: string }) => {
+  const { type, id } = args;
+  console.log(`[Addon] Subtitles request: ${type} ${id}`);
+
+  const aggregatorRef = getAggregatorByType(type as any);
+  if (!aggregatorRef) return { subtitles: [] };
+
+  const subtitles = await aggregatorRef.getSubtitles(type, id);
+  return { subtitles };
 });
 
 export const addonInterface = builder.getInterface();

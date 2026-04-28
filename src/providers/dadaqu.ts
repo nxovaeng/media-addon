@@ -4,6 +4,8 @@ import crypto from 'crypto';
 import { Provider, MediaItem, Meta, Stream } from '../types';
 
 const CANDIDATE_DOMAINS = [
+  'https://www.dadaqu.tv',
+  'https://www.dadaqu.pw',
   'https://www.dadaqu.pro',
   'https://www.dadaqu.fun',
   'https://www.dadaqu.me',
@@ -72,12 +74,12 @@ async function detectBestDomain(): Promise<void> {
   }
 }
 
-detectBestDomain().catch(() => {});
+detectBestDomain().catch(() => { });
 
 function getActiveMainUrl(): string {
   const now = Date.now();
   if (now - domainState.lastChecked > RECHECK_INTERVAL) {
-    detectBestDomain().catch(() => {});
+    detectBestDomain().catch(() => { });
   }
   return domainState.active;
 }
@@ -507,7 +509,8 @@ const dadaquProvider: Provider = {
 
     return {
       id,
-      type: type as 'movie' | 'series' | 'channel' | 'tv',
+      type: type as 'movie' | 'series',
+      name: meta.name,
       title: meta.name,
       aliases: meta.aliases,
       season: 1,
@@ -519,7 +522,12 @@ const dadaquProvider: Provider = {
     const siteConfig = getSiteConfig('dadaqu');
     if (!siteConfig) return [];
     const results = await searchDadaqu(siteConfig, query);
-    return results.map((r) => ({ id: r.id, type: (r.type as 'movie' | 'series'), title: r.title }));
+    return results.map((r) => ({ 
+      id: r.id, 
+      type: (r.type as 'movie' | 'series'), 
+      name: r.title,
+      title: r.title 
+    }));
   },
 
   async getCatalog(type: string, extra: any): Promise<Meta[]> {
@@ -530,10 +538,11 @@ const dadaquProvider: Provider = {
       const results = await searchDadaqu(siteConfig, extra.search);
       return results.map((r) => ({
         id: r.id,
-        type: r.type,
-        name: r.title,
+        type: r.type as 'movie' | 'series',
+        name: r.title || 'Unknown',
+        title: r.title,
         poster: r.poster,
-        posterShape: 'poster',
+        posterShape: 'poster' as const,
       }));
     }
 

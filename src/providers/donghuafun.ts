@@ -256,6 +256,7 @@ const donghuafunProvider: Provider = {
     return {
       id,
       type: type as any,
+      name: meta.name,
       title: meta.name,
       aliases: meta.aliases || [],
       season: 1,
@@ -268,6 +269,7 @@ const donghuafunProvider: Provider = {
     return metas.map(m => ({
       id: m.id,
       type: 'series' as const,
+      name: m.name,
       title: m.name,
     }));
   },
@@ -327,7 +329,10 @@ const donghuafunProvider: Provider = {
       }
 
       // Step 3: Find the best match by title similarity, then parse episodes
-      const validTitles = [item.title, ...(item.aliases || [])].map(t => t.toLowerCase());
+      const primaryTitle = item.title || item.name || '';
+      const validTitles = [primaryTitle, ...(item.aliases || [])]
+        .filter((t): t is string => !!t)
+        .map(t => t.toLowerCase());
 
       // Score each result: exact match > partial match
       const scoredItems = detailData.list.map(vodItem => {

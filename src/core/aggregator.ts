@@ -1,7 +1,8 @@
 import { metadataService } from './metadataService';
 import { wrapProxyUrl } from '../utils/mediaflow';
 import { db } from '../utils/db';
-import { MediaItem, Stream, Meta, Provider, AggregatorConfig } from '../types';
+import { MediaItem, Stream, Meta, Provider, AggregatorConfig, Subtitle } from '../types';
+import { getTmdbHomeCatalog } from './tmdbHome';
 
 export class Aggregator {
   public readonly name: string;
@@ -98,6 +99,43 @@ export class Aggregator {
     return sorted;
   }
 
+  public async getSubtitles(type: string, id: string): Promise<Subtitle[]> {
+    let mediaItem: MediaItem;
+
+    if (id.startsWith('agg:')) {
+      const afterAgg = id.slice('agg:'.length);
+      const colonIdx = afterAgg.indexOf(':');
+      if (colonIdx === -1) return [];
+      const providerId = afterAgg.slice(0, colonIdx);
+
+      const provider = this.providers.find(p => p.id === providerId);
+      if (!provider || !provider.resolveMediaItem) return [];
+
+      const resolved = await provider.resolveMediaItem(id, type).catch(() => null);
+      if (!resolved) return [];
+      mediaItem = resolved;
+    } else {
+      const meta = await metadataService.getMeta(id, type);
+      if (!meta) return [];
+      mediaItem = { ...meta } as MediaItem;
+    }
+
+    const subPromises = this.providers.map(async (p) => {
+      if ((p as any).getSubtitles) {
+        try {
+          return await (p as any).getSubtitles(mediaItem);
+        } catch (err) {
+          console.error(`[Aggregator] Provider ${p.id} subtitles failed:`, err instanceof Error ? err.message : String(err));
+          return [];
+        }
+      }
+      return [];
+    });
+
+    const results = await Promise.all(subPromises);
+    return results.flat();
+  }
+
   public async getCatalog(type: string, id: string, extra: any): Promise<Meta[]> {
     if (extra?.search) {
       const catalogPromises = this.providers.map(async (p) => {
@@ -125,10 +163,10 @@ export class Aggregator {
       const homeSource = this.config.homeSource || 'provider';
       if (homeSource === 'tmdb') {
         // Handle TMDB-specific logic
-        return [];
+        return await getTmdbHomeCatalog('movie', extra);
       } else if (homeSource === 'douban') {
         // Handle Douban-specific logic
-        return [];
+        return await getTmdbHomeCatalog('series', extra);
       } else {
         // Default: aggregate from providers
         const provider = this.providers[0]
@@ -143,7 +181,7 @@ export class Aggregator {
         return [];
       }
     }
-    
+
     return [];
   }
 
@@ -183,9 +221,8 @@ export class Aggregator {
   }
 
   public getEnabledProviders(): Provider[] {
-    return Array.from(this.providers.values())
-      .filter((p) => p.enabled)
-      .sort((a, b) => (b.weight || 0) - (a.weight || 0));
+    return this.providers
+      .filter((p) => p.enabled);
   }
 }
 
@@ -228,9 +265,9 @@ export function getDefaultAggregator(type: 'movie' | 'series', region?: 'mainlan
     const regionMatches = !region || region === 'auto' || agg.config.region === 'auto' || agg.config.region === region;
     return configMatches && regionMatches;
   });
-  
+
   if (candidates.length === 0) return null;
-  
+
   // 按优先级排序，返回最高优先级的
   candidates.sort((a, b) => (b.config.priority || 0) - (a.config.priority || 0));
   return candidates[0];
@@ -241,7 +278,7 @@ export function getDefaultAggregator(type: 'movie' | 'series', region?: 'mainlan
  */
 export function getAggregatorByProviderId(providerId: string): Aggregator | null {
   for (const agg of aggregators.values()) {
-    if (agg.config.providerIds.includes(providerId)) {
+    if (agg.config.providerIds?.includes(providerId)) {
       return agg;
     }
   }
@@ -252,7 +289,7 @@ export function getAggregatorByProviderId(providerId: string): Aggregator | null
  * 向后兼容的函数 - 根据类型获取聚合器（会返回默认的）
  */
 export function getAggregatorByType(type: string): Aggregator | null {
-  return getDefaultAggregator(type as 'movie' | 'series') || 
-         getDefaultAggregator(type as 'movie' | 'series', 'auto');
+  return getDefaultAggregator(type as 'movie' | 'series') ||
+    getDefaultAggregator(type as 'movie' | 'series', 'auto');
 }
 

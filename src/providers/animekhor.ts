@@ -39,6 +39,7 @@ const animekhorProvider: Provider = {
                     id: `agg:${SITE_CONFIG.id}:${href}`,
                     type: 'series',
                     title: title,
+                    name: title
                 });
             }
         });
@@ -50,8 +51,9 @@ const animekhorProvider: Provider = {
             const items = await this.search!(extra.search, type);
             return items.map(i => ({
                 id: i.id,
-                type: 'series',
-                name: i.title,
+                type: 'series' as const,
+                name: i.title || i.name || 'Unknown',
+                title: i.title || i.name || 'Unknown'
             }));
         }
 
@@ -108,6 +110,7 @@ const animekhorProvider: Provider = {
         return {
             id,
             type: type as any,
+            name: title,
             title,
             aliases,
             season: 1,
@@ -246,7 +249,10 @@ const animekhorProvider: Provider = {
                         const link = $(el).find('div.bsx > a');
                         const title = link.attr('title') || link.text().trim();
                         const href = link.attr('href') || '';
-                        const validTitles = [item.title, ...(item.aliases || [])].map(t => t.toLowerCase());
+                    const primaryTitle = item.title || item.name || '';
+                    const validTitles = [primaryTitle, ...(item.aliases || [])]
+                        .filter((t): t is string => !!t)
+                        .map(t => t.toLowerCase());
                         const titleLower = title.toLowerCase();
                         const isMatch = validTitles.some(t => titleLower.includes(t) || t.includes(titleLower));
                         if (isMatch && href) {

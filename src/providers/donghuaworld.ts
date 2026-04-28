@@ -38,9 +38,18 @@ const donghuaworldProvider: Provider = {
         const rawTitle = meta?.name || '';
         const aliases: string[] = meta?.aliases ? [...meta.aliases] : [];
         const title = rawTitle.replace(/\s+episode\s+\d+.*/i, '').replace(/\s+ep\.?\s*\d+.*/i, '').trim();
-        if (rawTitle !== title) aliases.push(rawTitle);
+        if (rawTitle && rawTitle !== title) aliases.push(rawTitle);
 
-        return { id, type: type as any, title, aliases, season: 1, episode: episodeNum };
+        const finalTitle = title || rawTitle || 'Unknown';
+        return { 
+            id, 
+            type: type as any, 
+            name: finalTitle,
+            title: finalTitle, 
+            aliases, 
+            season: 1, 
+            episode: episodeNum 
+        };
     },
 
     async search(query: string, type: string): Promise<MediaItem[]> {
@@ -57,6 +66,7 @@ const donghuaworldProvider: Provider = {
                     id: `agg:${SITE_CONFIG.id}:${href}`,
                     type: 'series',
                     title: title,
+                    name: title
                 });
             }
         });
@@ -68,8 +78,9 @@ const donghuaworldProvider: Provider = {
             const items = await this.search!(extra.search, type);
             return items.map(i => ({
                 id: i.id,
-                type: 'series',
-                name: i.title,
+                type: 'series' as const,
+                name: i.title || i.name || 'Unknown',
+                title: i.title || i.name || 'Unknown',
             }));
         }
 
@@ -109,7 +120,7 @@ const donghuaworldProvider: Provider = {
         try {
             const res = await axios.get(id, { headers: DEFAULT_HEADERS, timeout: 10000 });
             const $ = cheerio.load(res.data);
-            
+
             const title = $('h1.entry-title').text().trim();
             const poster = $('div.thumb img').attr('src');
             const background = $('div.bigcontent').attr('style')?.match(/url\(['"]?([^'"]+)['"]?\)/)?.[1];
@@ -136,16 +147,16 @@ const donghuaworldProvider: Provider = {
             if (epPageUrl) {
                 const epRes = await axios.get(epPageUrl, { headers: DEFAULT_HEADERS, timeout: 10000 });
                 const $ep = cheerio.load(epRes.data);
-                
+
                 $ep('div.episodelist > ul > li').each((i, el) => {
                     const epLink = $ep(el).find('a');
-                    
+
                     const playinfoSpan = epLink.find('.playinfo span').text().trim();
                     const rawText = playinfoSpan || epLink.find('span').text().trim() || epLink.text().trim();
                     const epNumMatch = rawText.match(/(\d+)/);
                     const epNum = epNumMatch ? parseInt(epNumMatch[1]) : i + 1;
                     const href = epLink.attr('href');
-                    
+
                     let dateText = epLink.find('.epl-date').text().trim();
                     if (!dateText && playinfoSpan) {
                         const parts = playinfoSpan.split('-');
@@ -153,7 +164,7 @@ const donghuaworldProvider: Provider = {
                             dateText = parts[parts.length - 1].trim();
                         }
                     }
-                    
+
                     let released: string;
                     try {
                         const parsedDate = new Date(dateText);
@@ -183,9 +194,10 @@ const donghuaworldProvider: Provider = {
     },
 
     async getStreams(item: MediaItem): Promise<Stream[]> {
+        const title = item.title || item.name || 'Unknown';
         const epLog = item.episode ? ` S${item.season}E${item.episode}` : '';
-        console.log(`[Donghuaworld] Requesting streams for: ${item.title}${epLog} (ID: ${item.id})`);
-        
+        console.log(`[Donghuaworld] Requesting streams for: ${title}${epLog} (ID: ${item.id})`);
+
         try {
             let detailUrl = '';
 
@@ -199,13 +211,16 @@ const donghuaworldProvider: Provider = {
                     const searchUrl = `${SITE_CONFIG.mainUrl}/?s=${encodeURIComponent(query)}`;
                     const searchRes = await axios.get(searchUrl, { headers: DEFAULT_HEADERS, timeout: 10000 });
                     const $ = cheerio.load(searchRes.data);
-                    
+
                     const candidates: Array<{ url: string; title: string; score: number }> = [];
                     $('div.listupd > article').each((_, el) => {
                         const link = $(el).find('div.bsx > a');
                         const title = link.attr('title') || link.text().trim();
                         const href = link.attr('href') || '';
-                        const validTitles = [item.title, ...(item.aliases || [])].map(t => t.toLowerCase());
+                        const currentTitle = item.title || item.name || '';
+                        const validTitles = [currentTitle, ...(item.aliases || [])]
+                            .filter((t): t is string => !!t)
+                            .map(t => t.toLowerCase());
                         const titleLower = title.toLowerCase();
                         const isMatch = validTitles.some(t => titleLower.includes(t) || t.includes(titleLower));
                         if (isMatch && href) {
@@ -230,16 +245,16 @@ const donghuaworldProvider: Provider = {
 
             const detailRes = await axios.get(detailUrl, { headers: DEFAULT_HEADERS, timeout: 10000 });
             const $d = cheerio.load(detailRes.data);
-            
+
             let epPageUrl = $d('.eplister li > a').first().attr('href');
             if (!epPageUrl) return [];
 
             const epRes = await axios.get(epPageUrl, { headers: DEFAULT_HEADERS, timeout: 10000 });
             const $ep = cheerio.load(epRes.data);
-            
+
             let watchUrl = '';
             const targetEpisode = item.episode || 1;
-            
+
             $ep('div.episodelist > ul > li').each((_, el) => {
                 const epLink = $ep(el).find('a');
                 const rawText = epLink.find('span').text().trim();

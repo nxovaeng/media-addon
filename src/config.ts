@@ -12,10 +12,7 @@ const configSchema = z.object({
   FEBBOX_TOKEN: z.string().optional(),
   ACCESS_TOKENS: z.string().optional(),
   ACTIVE_AGGREGATORS: z.string().optional(),
-  ENABLE_ADDON: z.preprocess((val) => {
-    if (typeof val === 'string') return val.toLowerCase() === 'true';
-    return Boolean(val);
-  }, z.boolean()).default(true),
+  REGION: z.enum(['all', 'mainland', 'overseas']).default('all'),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 });
 

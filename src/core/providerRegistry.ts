@@ -5,17 +5,19 @@ import donghuaworldProvider from '../providers/donghuaworld';
 import netmirrorProvider from '../providers/netmirror';
 import superstreamProvider from '../providers/superstream';
 import vidlinkProvider from '../providers/vidlink';
+import cinemacityProvider from '../providers/cinemacity';
 import dadaquProvider from '../providers/dadaqu';
 import pipishiProvider from '../providers/pipishi';
 import { Provider, AggregatorConfig } from '../types';
 import { registerAggregator } from './aggregator';
-import { activeAggregators } from '../config';
+import { config, activeAggregators } from '../config';
 
 /**
  * 供应商分类 - 按地域/类型组织
  */
 export const movieProviders: Provider[] = [
-  vidlinkProvider,
+  //vidlinkProvider,
+  cinemacityProvider,
   dadaquProvider,
   pipishiProvider,
 ];
@@ -27,6 +29,7 @@ export const seriesProviders: Provider[] = [
   animekhorProvider,
   superstreamProvider,
   netmirrorProvider,
+  cinemacityProvider,
   dadaquProvider,
   pipishiProvider,
 ];
@@ -44,9 +47,17 @@ export function getProviderById(providerId: string): Provider | undefined {
 }
 
 export function getEnabledAggregatorConfigs(): AggregatorConfig[] {
-  return activeAggregators.length > 0
-    ? aggregatorConfigs.filter((config) => activeAggregators.includes(config.name))
-    : [...aggregatorConfigs];
+  if (activeAggregators.length > 0) {
+    return aggregatorConfigs.filter((c) => activeAggregators.includes(c.name));
+  }
+
+  if (config.REGION === 'all') {
+    return [...aggregatorConfigs];
+  }
+
+  return aggregatorConfigs.filter((c) => 
+    c.region === 'auto' || c.region === config.REGION
+  );
 }
 
 /**
@@ -74,7 +85,7 @@ const aggregatorConfigs: AggregatorConfig[] = [
     name: 'hot-movies',
     displayName: '热门电影',
     supportedTypes: ['movie'],
-    providerIds: ['superstream', 'vidlink'],
+    providerIds: ['superstream', 'cinemacity'],
     region: 'auto',
     priority: 100,
     homeSource: 'tmdb',
@@ -101,10 +112,7 @@ const aggregatorConfigs: AggregatorConfig[] = [
  * 初始化所有聚合器
  */
 export function initializeAggregators() {
-  const aggregators: { movie: any; series: any } = { movie: null, series: null };
-  const enabledConfigs = activeAggregators.length > 0
-    ? aggregatorConfigs.filter((config) => activeAggregators.includes(config.name))
-    : aggregatorConfigs;
+  const enabledConfigs = getEnabledAggregatorConfigs();
 
   if (activeAggregators.length > 0) {
     const unknownNames = activeAggregators.filter((name) => !aggregatorConfigs.some((config) => config.name === name));
@@ -114,7 +122,7 @@ export function initializeAggregators() {
   }
 
   enabledConfigs.forEach(config => {
-    const providers = config.providerIds
+    const providers = (config.providerIds || [])
       .map(id => providerMap.get(id))
       .filter((p): p is Provider => p !== undefined);
 
@@ -123,38 +131,6 @@ export function initializeAggregators() {
       return;
     }
 
-    const agg = registerAggregator(config.name, config, providers);
-
-    // 设置旧版向后兼容的引用
-    if (config.name === 'mainland-anime' || config.name === 'mixed-anime') {
-      if (!aggregators.series) aggregators.series = agg;
-    }
-    if (config.name === 'mainstream-movies') {
-      aggregators.movie = agg;
-    }
+    registerAggregator(config.name, config, providers);
   });
-
-  // 如果没有设置默认的 movie/series aggregator，使用第一个匹配的
-  if (!aggregators.movie) {
-    const movieAgg = aggregatorConfigs
-      .find(c => c.supportedTypes.includes('movie'));
-    if (movieAgg) {
-      const providers = movieAgg.providerIds
-        .map(id => providerMap.get(id))
-        .filter((p): p is Provider => p !== undefined);
-      aggregators.movie = registerAggregator(movieAgg.name, movieAgg, providers);
-    }
-  }
-
-  if (!aggregators.series) {
-    const seriesAgg = aggregatorConfigs
-      .find(c => c.supportedTypes.includes('series') && c.region === 'auto');
-    if (seriesAgg) {
-      const providers = seriesAgg.providerIds
-        .map(id => providerMap.get(id))
-        .filter((p): p is Provider => p !== undefined);
-      aggregators.series = registerAggregator(seriesAgg.name, seriesAgg, providers);
-    }
-  }
-
 }

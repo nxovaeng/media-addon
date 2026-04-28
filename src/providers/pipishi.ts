@@ -513,7 +513,8 @@ const pipishiProvider: Provider = {
     if (!meta) return null;
     return {
       id,
-      type: type as 'movie' | 'series' | 'channel' | 'tv',
+      type: type as 'movie' | 'series',
+      name: meta.name,
       title: meta.name,
       aliases: meta.aliases,
       season: 1,
@@ -523,13 +524,25 @@ const pipishiProvider: Provider = {
 
   async search(query: string): Promise<MediaItem[]> {
     const results = await searchPipishi(query);
-    return results.map((r) => ({ id: r.id, type: (r.type as 'movie' | 'series'), title: r.title }));
+    return results.map((r) => ({ 
+      id: r.id, 
+      type: (r.type as 'movie' | 'series'), 
+      name: r.title,
+      title: r.title 
+    }));
   },
 
   async getCatalog(type: string, extra: any): Promise<Meta[]> {
     if (extra?.search) {
       const results = await searchPipishi(extra.search);
-      return results.map((r) => ({ id: r.id, type: r.type, name: r.title, poster: r.poster, posterShape: 'poster' }));
+      return results.map((r) => ({ 
+        id: r.id, 
+        type: r.type as 'movie' | 'series', 
+        name: r.title || 'Unknown', 
+        title: r.title,
+        poster: r.poster, 
+        posterShape: 'poster' as const 
+      }));
     }
 
     const catalogs = SITE.catalogs.filter((cat) => cat.type === type);
@@ -541,10 +554,11 @@ const pipishiProvider: Provider = {
 
     return metas.flat().map((r) => ({
       id: r.id,
-      type,
-      name: r.title,
+      type: type as 'movie' | 'series',
+      name: r.title || 'Unknown',
+      title: r.title,
       poster: r.poster,
-      posterShape: 'poster',
+      posterShape: 'poster' as const,
       description: r.remark,
     }));
   },
@@ -564,7 +578,8 @@ const pipishiProvider: Provider = {
       const episode = parseInt(episodeStr || String(item.episode || 1), 10) || 1;
       playLinks = await getPlayLinks(vodId, episode);
     } else {
-      const query = item.title || '';
+      const query = item.title || item.name || '';
+      if (!query) return [];
       const results = await searchPipishi(query);
       if (results.length === 0) return [];
       const best = results[0];

@@ -1,84 +1,128 @@
 import axios from 'axios';
+import * as cheerio from 'cheerio';
 import { config } from '../config';
 import { Meta } from '../types';
 
+const SITE_CONFIG = {
+  tmdbOrg: 'https://www.themoviedb.org',
+  tmdbImageBase: 'https://image.tmdb.org/t/p/w500',
+};
+
 const tmdb = axios.create({
   baseURL: 'https://api.themoviedb.org/3',
-  params: config.TMDB_API_KEY ? { api_key: config.TMDB_API_KEY } : {}
+  params: { api_key: config.TMDB_API_KEY }
 });
 
-function buildImageUrl(path?: string): string | undefined {
-  if (!path) return undefined;
+function buildImageUrl(path: string | undefined): string {
+  if (!path) return '';
   if (path.startsWith('http')) return path;
-  return `https://image.tmdb.org/t/p/w500${path}`;
+  return `${SITE_CONFIG.tmdbImageBase}${path}`;
+}
+
+function extractAliases(item: any, type: string): string[] {
+  const aliases = new Set<string>();
+  if (item.title) aliases.add(item.title);
+  if (item.name) aliases.add(item.name);
+  if (item.original_title) aliases.add(item.original_title);
+  if (item.original_name) aliases.add(item.original_name);
+
+  if (Array.isArray(item.alternative_titles?.titles || item.alternative_titles?.results)) {
+    const titles = item.alternative_titles?.titles || item.alternative_titles?.results;
+    for (const alt of titles) {
+      if (alt.title) aliases.add(alt.title);
+      if (alt.name) aliases.add(alt.name);
+    }
+  }
+
+  return Array.from(aliases);
 }
 
 function buildMovieMeta(item: any): Meta {
+  const name = item.title || item.name || 'Unknown Movie';
   return {
-    id: item.id?.toString(),
-    type: 'movie',
-    name: item.title || item.name || '',
+    id: `tmdb${item.id}`,
+    type: 'movie' as const,
+    name: name,
+    title: name,
     poster: buildImageUrl(item.poster_path || item.poster),
     background: buildImageUrl(item.backdrop_path || item.backdrop),
     description: item.overview || '',
     year: item.release_date ? new Date(item.release_date).getFullYear() : undefined,
+    aliases: extractAliases(item, 'movie'),
   };
 }
 
 function buildTvMeta(item: any): Meta {
+  const name = item.name || item.title || 'Unknown Series';
   return {
-    id: item.id?.toString(),
-    type: 'series',
-    name: item.name || item.title || '',
+    id: `tmdb${item.id}`,
+    type: 'series' as const,
+    name: name,
+    title: name,
     poster: buildImageUrl(item.poster_path || item.poster),
     background: buildImageUrl(item.backdrop_path || item.backdrop),
     description: item.overview || '',
     year: item.first_air_date ? new Date(item.first_air_date).getFullYear() : undefined,
+    aliases: extractAliases(item, 'series'),
   };
 }
 
-async function fetchTmdbPopular(type: 'movie' | 'series', page = 1): Promise<Meta[]> {
-  if (!config.TMDB_API_KEY) return [];
+// ─── Web Scraping Fallbacks ──────────────────────────────────────────────────
 
-  const endpoint = type === 'movie' ? '/movie/popular' : '/tv/popular';
-  const res = await tmdb.get(endpoint, { params: { page } });
-  const results = res.data?.results || [];
+function parseTmdbFromHtml(html: string, type: 'movie' | 'series', maxItems = 20): Meta[] {
+  const $ = cheerio.load(html);
+  const seen = new Set<string>();
+  const metas: Meta[] = [];
+  const linkPrefix = type === 'movie' ? '/movie/' : '/tv/';
 
-  return results.map((item: any) => (type === 'movie' ? buildMovieMeta(item) : buildTvMeta(item)));
-}
+  $(`a[href^="${linkPrefix}"]`).each((_, el) => {
+    const href = $(el).attr('href') || '';
+    const match = href.match(new RegExp(`^${linkPrefix}(\\d+)`));
+    if (!match) return;
+    const tmdbId = match[1];
+    if (seen.has(tmdbId)) return;
+    seen.add(tmdbId);
 
-async function searchTmdb(type: 'movie' | 'series', query: string, page = 1): Promise<Meta[]> {
-  if (!config.TMDB_API_KEY || !query) return [];
+    const title = $(el).attr('title') || $(el).find('img').attr('alt') || $(el).text().trim();
+    if (!title) return;
 
-  const endpoint = type === 'movie' ? '/search/movie' : '/search/tv';
-  const res = await tmdb.get(endpoint, { params: { query, page } });
-  const results = res.data?.results || [];
+    metas.push({
+      id: `tmdb${tmdbId}`,
+      type: type as 'movie' | 'series',
+      name: title,
+      title: title,
+      poster: buildImageUrl($(el).find('img').attr('src') || $(el).find('img').attr('data-src')),
+      posterShape: 'poster',
+    });
 
-  return results.map((item: any) => (type === 'movie' ? buildMovieMeta(item) : buildTvMeta(item)));
-}
+    if (metas.length >= maxItems) return false;
+  });
 
-async function fetchTmdbMeta(type: 'movie' | 'series', tmdbId: string): Promise<Meta | null> {
-  if (!config.TMDB_API_KEY || !tmdbId) return null;
-
-  try {
-    const endpoint = type === 'movie' ? `/movie/${tmdbId}` : `/tv/${tmdbId}`;
-    const res = await tmdb.get(endpoint);
-    const item = res.data;
-    return type === 'movie' ? buildMovieMeta(item) : buildTvMeta(item);
-  } catch (err) {
-    console.error(`[TmdbHome] fetchTmdbMeta failed for ${type} ${tmdbId}:`, err);
-    return null;
-  }
+  return metas;
 }
 
 export async function getTmdbHomeCatalog(type: 'movie' | 'series', extra: any): Promise<Meta[]> {
-  if (extra?.search) {
-    return await searchTmdb(type, extra.search, extra.page ? parseInt(extra.page, 10) || 1 : 1);
+  const page = extra?.skip ? Math.floor(extra.skip / 20) + 1 : 1;
+  
+  try {
+    const endpoint = type === 'movie' ? '/movie/popular' : '/tv/popular';
+    const res = await tmdb.get(endpoint, { params: { page } });
+    
+    if (res.data && Array.isArray(res.data.results)) {
+      return res.data.results.map((item: any) => type === 'movie' ? buildMovieMeta(item) : buildTvMeta(item));
+    }
+  } catch (err) {
+    console.warn(`[TMDB Home] API failed, falling back to scraping:`, err instanceof Error ? err.message : String(err));
   }
 
-  return await fetchTmdbPopular(type, extra?.page ? parseInt(extra.page, 10) || 1 : 1);
-}
-
-export async function getTmdbHomeMeta(type: 'movie' | 'series', id: string): Promise<Meta | null> {
-  return await fetchTmdbMeta(type, id);
+  try {
+    const url = `${SITE_CONFIG.tmdbOrg}/${type === 'movie' ? 'movie' : 'tv'}`;
+    const res = await axios.get(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+    });
+    return parseTmdbFromHtml(res.data, type);
+  } catch (err) {
+    console.error(`[TMDB Home] Scraping also failed:`, err);
+    return [];
+  }
 }

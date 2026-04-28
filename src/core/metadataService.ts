@@ -22,6 +22,8 @@ export class MetadataService {
       }
     } else if (baseId.startsWith('bgm')) {
       meta = await this.fetchBangumi(baseId.replace('bgm', ''));
+    } else if (baseId.startsWith('tmdb')) {
+      meta = await this.fetchTMDBById(baseId.replace('tmdb', ''), type);
     } else if (/^\d+$/.test(baseId)) {
       meta = await this.fetchTMDBById(baseId, type);
     }
@@ -48,11 +50,14 @@ export class MetadataService {
         }
       }
 
+      const title = res.data.name || res.data.title || '';
       return {
         id: imdbId,
         type: res.data.type === 'movie' ? 'movie' : 'series',
-        title: res.data.name || res.data.title || '',
+        name: title,
+        title: title,
         tmdbid: res.data.tmdb_id?.toString() || res.data.tmdbId?.toString(),
+        imdbid: imdbId,
         aliases: Array.from(aliases),
         year: res.data.year ? Number(res.data.year) : undefined
       };
@@ -92,8 +97,10 @@ export class MetadataService {
       return {
         id: imdbId,
         type: type as 'movie' | 'series',
+        name: title,
         title,
         tmdbid: item.id?.toString(),
+        imdbid: imdbId,
         aliases: Array.from(aliases),
         year: new Date(item.release_date || item.first_air_date).getFullYear()
       };
@@ -105,7 +112,9 @@ export class MetadataService {
 
   private async fetchTMDBById(tmdbId: string, type: string): Promise<MediaItem | null> {
     try {
-      const itemRes = await this.tmdb.get(type === 'movie' ? `/movie/${tmdbId}` : `/tv/${tmdbId}`);
+      const itemRes = await this.tmdb.get(type === 'movie' ? `/movie/${tmdbId}` : `/tv/${tmdbId}`, {
+        params: { append_to_response: 'external_ids,alternative_titles' }
+      });
       const item = itemRes.data;
       if (!item) return null;
 
@@ -116,26 +125,27 @@ export class MetadataService {
       if (title) aliases.add(title);
       if (originalTitle) aliases.add(originalTitle);
 
-      try {
-        const altPath = type === 'movie' ? `/movie/${tmdbId}/alternative_titles` : `/tv/${tmdbId}/alternative_titles`;
-        const altRes = await this.tmdb.get(altPath);
-        const altTitles = altRes.data.titles || altRes.data.results || [];
-        for (const alt of altTitles) {
-          if (alt.title && (alt.iso_3166_1 === 'CN' || alt.iso_3166_1 === 'US' || alt.iso_3166_1 === 'GB')) {
-            aliases.add(alt.title);
-          }
+      const altTitles = item.alternative_titles?.titles || item.alternative_titles?.results || [];
+      for (const alt of altTitles) {
+        if (alt.title && (alt.iso_3166_1 === 'CN' || alt.iso_3166_1 === 'US' || alt.iso_3166_1 === 'GB')) {
+          aliases.add(alt.title);
         }
-      } catch {
-        console.warn(`[MetadataService] Could not fetch alternative titles for TMDB ${tmdbId}`);
       }
 
+      const imdbId = item.external_ids?.imdb_id || item.imdb_id;
+
       return {
-        id: tmdbId,
+        id: `tmdb${tmdbId}`,
         type: type as 'movie' | 'series',
+        name: title,
         title,
         tmdbid: tmdbId,
+        imdbid: imdbId,
         aliases: Array.from(aliases),
-        year: new Date(item.release_date || item.first_air_date).getFullYear()
+        poster: `https://image.tmdb.org/t/p/w500${item.poster_path}`,
+        background: `https://image.tmdb.org/t/p/original${item.backdrop_path}`,
+        description: item.overview,
+        year: item.release_date || item.first_air_date ? new Date(item.release_date || item.first_air_date).getFullYear() : undefined
       };
     } catch (err) {
       console.error(`[MetadataService] TMDB ID fetch failed for ${tmdbId}:`, err);
@@ -185,6 +195,7 @@ export class MetadataService {
       return {
         id: `bgm${bgmId}`,
         type: 'series',
+        name: title,
         title: title,
         aliases: Array.from(aliases),
         year: res.data.date ? new Date(res.data.date).getFullYear() : undefined
