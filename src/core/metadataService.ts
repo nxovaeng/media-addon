@@ -16,7 +16,7 @@ export class MetadataService {
 
     let meta: MediaItem | null = null;
     if (baseId.startsWith('tt')) {
-      meta = await this.fetchCinemeta(baseId);
+      meta = await this.fetchCinemeta(baseId, type);
       if (!meta) {
         meta = await this.fetchTMDBByImdb(baseId, type);
       }
@@ -34,35 +34,41 @@ export class MetadataService {
     return meta;
   }
 
-  private async fetchCinemeta(imdbId: string): Promise<MediaItem | null> {
+  private async fetchCinemeta(imdbId: string, type: string): Promise<MediaItem | null> {
     try {
-      const res = await axios.get(`https://v3-cinemeta.strem.io/meta/${imdbId}`);
-      if (!res.data || !res.data.id) return null;
+      const cinemetaType = type === 'movie' ? 'movie' : 'series';
+      const res = await axios.get(`https://v3-cinemeta.strem.io/meta/${cinemetaType}/${imdbId}.json`, { timeout: 5000 });
+      if (!res.data || !res.data.meta) return null;
 
+      const data = res.data.meta;
       const aliases = new Set<string>();
-      if (res.data.name) aliases.add(res.data.name);
-      if (res.data.originalName) aliases.add(res.data.originalName);
-      if (res.data.title) aliases.add(res.data.title);
-      if (res.data.originalTitle) aliases.add(res.data.originalTitle);
-      if (Array.isArray(res.data.alternativeTitles)) {
-        for (const alt of res.data.alternativeTitles) {
+      if (data.name) aliases.add(data.name);
+      if (data.originalName) aliases.add(data.originalName);
+      if (data.title) aliases.add(data.title);
+      if (data.originalTitle) aliases.add(data.originalTitle);
+      if (Array.isArray(data.alternativeTitles)) {
+        for (const alt of data.alternativeTitles) {
           if (typeof alt === 'string' && alt) aliases.add(alt);
         }
       }
 
-      const title = res.data.name || res.data.title || '';
+      const title = data.name || data.title || '';
       return {
         id: imdbId,
-        type: res.data.type === 'movie' ? 'movie' : 'series',
+        type: cinemetaType,
         name: title,
         title: title,
-        tmdbid: res.data.tmdb_id?.toString() || res.data.tmdbId?.toString(),
+        tmdbid: data.tmdb_id?.toString() || data.tmdbId?.toString(),
         imdbid: imdbId,
         aliases: Array.from(aliases),
-        year: res.data.year ? Number(res.data.year) : undefined
+        year: data.year ? Number(data.year) : undefined
       };
-    } catch (err) {
-      console.warn(`[MetadataService] Cinemeta fetch failed for ${imdbId}:`, err);
+    } catch (err: any) {
+      if (err.response?.status === 404) {
+        console.warn(`[MetadataService] Cinemeta: ${imdbId} not found (404)`);
+      } else {
+        console.warn(`[MetadataService] Cinemeta fetch failed for ${imdbId}:`, err.message);
+      }
       return null;
     }
   }

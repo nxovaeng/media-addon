@@ -163,7 +163,7 @@ export class Aggregator {
       const homeSource = this.config.homeSource || 'provider';
       if (homeSource === 'tmdb') {
         // Handle TMDB-specific logic
-        return await getTmdbHomeCatalog('movie', extra);
+        return await getTmdbHomeCatalog(type as 'movie' | 'series', extra);
       } else if (homeSource === 'douban') {
         // Handle Douban-specific logic
         return await getTmdbHomeCatalog('series', extra);
@@ -286,10 +286,17 @@ export function getAggregatorByProviderId(providerId: string): Aggregator | null
 }
 
 /**
- * 向后兼容的函数 - 根据类型获取聚合器（会返回默认的）
+ * 根据类型获取聚合器
  */
 export function getAggregatorByType(type: string): Aggregator | null {
-  return getDefaultAggregator(type as 'movie' | 'series') ||
-    getDefaultAggregator(type as 'movie' | 'series', 'auto');
+  const candidates = Array.from(aggregators.values()).filter(agg => {
+    return agg.config.supportedTypes.includes(type as any);
+  });
+
+  if (candidates.length === 0) return null;
+
+  // 按优先级排序，返回最高优先级的
+  candidates.sort((a, b) => (b.config.priority || 0) - (a.config.priority || 0));
+  return candidates[0];
 }
 

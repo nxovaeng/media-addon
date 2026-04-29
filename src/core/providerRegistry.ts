@@ -2,12 +2,8 @@ import animekhorProvider from '../providers/animekhor';
 import donghuafunProvider from '../providers/donghuafun';
 import donghuastreamProvider from '../providers/donghuastream';
 import donghuaworldProvider from '../providers/donghuaworld';
-import netmirrorProvider from '../providers/netmirror';
 import superstreamProvider from '../providers/superstream';
-import vidlinkProvider from '../providers/vidlink';
-import cinemacityProvider from '../providers/cinemacity';
-import dadaquProvider from '../providers/dadaqu';
-import pipishiProvider from '../providers/pipishi';
+
 import { Provider, AggregatorConfig } from '../types';
 import { registerAggregator } from './aggregator';
 import { config, activeAggregators } from '../config';
@@ -16,10 +12,7 @@ import { config, activeAggregators } from '../config';
  * 供应商分类 - 按地域/类型组织
  */
 export const movieProviders: Provider[] = [
-  //vidlinkProvider,
-  cinemacityProvider,
-  dadaquProvider,
-  pipishiProvider,
+  superstreamProvider,
 ];
 
 export const seriesProviders: Provider[] = [
@@ -28,10 +21,6 @@ export const seriesProviders: Provider[] = [
   donghuaworldProvider,
   animekhorProvider,
   superstreamProvider,
-  netmirrorProvider,
-  cinemacityProvider,
-  dadaquProvider,
-  pipishiProvider,
 ];
 
 export const providerMap = new Map<string, Provider>(
@@ -55,7 +44,7 @@ export function getEnabledAggregatorConfigs(): AggregatorConfig[] {
     return [...aggregatorConfigs];
   }
 
-  return aggregatorConfigs.filter((c) => 
+  return aggregatorConfigs.filter((c) =>
     c.region === 'auto' || c.region === config.REGION
   );
 }
@@ -66,46 +55,22 @@ export function getEnabledAggregatorConfigs(): AggregatorConfig[] {
  */
 const aggregatorConfigs: AggregatorConfig[] = [
   {
-    name: 'overseas-anime',
-    displayName: '海外动漫',
-    supportedTypes: ['series'],
-    providerIds: ['animekhor', 'superstream'],
-    region: 'overseas',
-    priority: 100,
-  },
-  {
     name: 'hot-anime',
     displayName: '热门动漫',
     supportedTypes: ['series'],
     providerIds: ['donghuafun', 'donghuastream', 'donghuaworld', 'animekhor'],
-    region: 'mainland',
+    region: 'overseas',
     priority: 100,
   },
   {
     name: 'hot-movies',
-    displayName: '热门电影',
-    supportedTypes: ['movie'],
-    providerIds: ['superstream', 'cinemacity'],
-    region: 'auto',
+    displayName: '海外热门',
+    supportedTypes: ['movie', 'series'],
+    providerIds: ['superstream'],
+    region: 'overseas',
     priority: 100,
     homeSource: 'tmdb',
-  },
-  {
-    name: 'dadaqu',
-    displayName: 'Dadaqu 影视',
-    supportedTypes: ['movie', 'series'],
-    providerIds: ['dadaqu'],
-    region: 'mainland',
-    priority: 90,
-  },
-  {
-    name: 'pipishi',
-    displayName: 'PiPiShi 影视',
-    supportedTypes: ['movie', 'series'],
-    providerIds: ['pipishi'],
-    region: 'mainland',
-    priority: 80,
-  },
+  }
 ];
 
 /**

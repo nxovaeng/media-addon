@@ -6,7 +6,7 @@ import { allowedAccessTokens } from './config';
 
 const manifest = {
   id: 'community.aggregator.node',
-  version: '1.0.0',
+  version: '1.0.3',
   name: '聚合搜索 (Node)',
   description: '提供动漫、电影、电视剧的优质在线源聚合',
   resources: [
@@ -30,15 +30,15 @@ const manifest = {
   ),
 
   behaviorHints: {
-    configurable: true,
-    configurationRequired: true,
+    configurable: false,
+    configurationRequired: false,
   },
   config: [
     {
       key: 'accessToken',
       type: 'password' as const,
       title: '访问 Token',
-      required: true,
+      required: false,
     }
   ]
 };
@@ -59,10 +59,12 @@ function isValidAccessToken(config: any): boolean {
 builder.defineStreamHandler(async (args: any) => {
   const { type, id, config } = args;
   console.log(`[Addon] Stream request: ${type} ${id}`);
+  /*
   if (!isValidAccessToken(config)) {
     console.warn('[Addon] Invalid access token for stream request');
     return { streams: [] };
   }
+  */
 
   let aggregatorRef = getAggregatorByType(type);
 
@@ -118,17 +120,31 @@ builder.defineMetaHandler(async ({ type, id, config }) => {
 });
 
 builder.defineCatalogHandler(async ({ type, id, extra }) => {
-  console.log(`[Addon] Catalog request: ${type} ${id} ${JSON.stringify(extra)}`);
+  console.log(`[Addon] Catalog request: ${type} ${id} (search: ${extra.search || 'none'})`);
 
-  const aggregatorRef = getAggregatorByName(id) || getAggregatorByType(type);
+  // Explicit check: Only handle requests intended for our aggregators
+  const aggregatorRef = getAggregatorByName(id);
 
   if (!aggregatorRef) {
-    console.error(`[Addon] No aggregator found for catalog: ${id} (type: ${type})`);
+    console.warn(`[Addon] Ignored request for unknown catalog: ${id}`);
     return { metas: [] };
   }
 
   const metas = await aggregatorRef.getCatalog(type, id, extra);
-  return { metas };
+
+  // Map to Standard Protocol
+  return {
+    metas: metas.map(m => ({
+      id: m.id,
+      type: m.type,
+      name: m.name || m.title || 'Unknown',
+      poster: m.poster,
+      background: m.background,
+      description: m.description,
+      releaseInfo: m.releaseInfo || (m.year ? String(m.year) : undefined),
+      links: m.links,
+    }))
+  };
 });
 
 builder.defineSubtitlesHandler(async (args: { type: string, id: string }) => {
