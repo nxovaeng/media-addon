@@ -3,7 +3,7 @@ import * as cheerio from 'cheerio';
 import { Provider, MediaItem, Stream, Subtitle } from '../types';
 import { config } from '../config';
 import { db } from '../utils/db';
-import { buildStreamProxyUrl } from '../utils/mediaflow';
+import { buildStreamProxyUrl, buildHlsProxyUrl } from '../utils/mediaflow';
 
 /**
  * SuperStream / FebBox provider.
@@ -170,13 +170,21 @@ async function getFileList(
     episode?: number
 ): Promise<Array<{ fid: number; fileName: string }>> {
     try {
-        const res = await axios.get(`${FEBBOX_FILE_API}/file/file_share_list`, {
-            params: { share_key: shareKey },
-            timeout: REQUEST_TIMEOUT,
-            headers: { 'Accept-Language': 'en' }
-        });
+        const rootCacheKey = `ss:rootFiles:${shareKey}`;
+        let fileList = db.get(rootCacheKey) as any[] | undefined;
 
-        const fileList = res.data?.data?.file_list;
+        if (!fileList) {
+            const res = await axios.get(`${FEBBOX_FILE_API}/file/file_share_list`, {
+                params: { share_key: shareKey },
+                timeout: REQUEST_TIMEOUT,
+                headers: { 'Accept-Language': 'en' }
+            });
+            fileList = res.data?.data?.file_list;
+            if (Array.isArray(fileList)) {
+                db.set(rootCacheKey, fileList, 86400); // Cache root file list for 24 hours
+            }
+        }
+
         if (!Array.isArray(fileList)) return [];
 
         if (season == null) {
@@ -326,6 +334,13 @@ const superstreamProvider: Provider = {
             return [];
         }
 
+        const cacheKey = `ss:streams:${item.id}`;
+        const cachedStreams = db.get(cacheKey) as Stream[] | undefined;
+        if (cachedStreams && cachedStreams.length > 0) {
+            console.log(`[SuperStream] Returning cached streams for: ${item.id}`);
+            return cachedStreams;
+        }
+
         // ── Extract IDs from the MediaItem ──
         let imdbId = item.imdbid || '';
         let tmdbId = item.tmdbid || '';
@@ -384,11 +399,19 @@ const superstreamProvider: Provider = {
                     const qualityNum = getQualityFromLabel(q.quality);
                     const qualityLabel = qualityNum ? `${qualityNum}p` : q.quality;
 
+                    const isHls = q.url.includes('.m3u8');
                     const streamUrl = config.MEDIAFLOW_PROXY_URL
-                        ? buildStreamProxyUrl(q.url, {
-                            referer: FEBBOX_API + '/',
-                            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36',
-                        })
+                        ? (isHls
+                            ? buildHlsProxyUrl(q.url, {
+                                referer: FEBBOX_API + '/',
+                                userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36',
+                                maxRes: true
+                            })
+                            : buildStreamProxyUrl(q.url, {
+                                referer: FEBBOX_API + '/',
+                                userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36',
+                                maxRes: true
+                            }))
                         : q.url;
 
                     streams.push({
@@ -398,6 +421,11 @@ const superstreamProvider: Provider = {
                         subtitles: subtitles.length > 0 ? subtitles : undefined
                     });
                 }
+            }
+
+            if (streams.length > 0) {
+                // Cache the resolved streams for 4 hours to speed up subsequent requests
+                db.set(cacheKey, streams, 14400);
             }
 
             return streams;

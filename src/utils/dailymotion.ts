@@ -11,7 +11,7 @@
 import axios from 'axios';
 
 const DM_METADATA_URL = 'https://www.dailymotion.com/player/metadata/video/';
-const QUALITY_PREFERENCE = ['2160', '1440', '1080', '720', '480', 'auto'];
+const QUALITY_PREFERENCE = ['2160', '1440', '1080', '720', 'auto'];
 const MIN_QUALITY = 720; // Filter out streams below this resolution
 
 const DM_HEADERS = {
@@ -34,10 +34,27 @@ export async function resolveDailymotionHLS(videoId: string): Promise<Dailymotio
   try {
     const res = await axios.get(metaUrl, {
       headers: DM_HEADERS,
-      timeout: 15000
+      timeout: 15000,
+      validateStatus: (status) => status < 500 // Accept 404 and other 4xx errors
     });
 
     const data = res.data;
+
+    // Handle geo-restricted or error responses containing the real video ID
+    if (data && data.error) {
+      let realVideoId = videoId;
+      if (data.id) {
+        realVideoId = data.id;
+      } else if (data.url) {
+        const realMatch = data.url.match(/\/video\/([kx][a-zA-Z0-9]+)/);
+        if (realMatch) realVideoId = realMatch[1];
+      }
+
+      if (realVideoId !== videoId) {
+        console.log(`[Dailymotion] Found real ID ${realVideoId} from error response, retrying...`);
+        return resolveDailymotionHLS(realVideoId);
+      }
+    }
 
     // qualities object: { "1080": [{type:"application/x-mpegURL", url:"..."}], ... }
     const qualities = data && data.qualities;

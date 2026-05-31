@@ -45,56 +45,92 @@ export async function resolveDonghuaPlanet(
 
     const body: string = res.data;
 
-    // Extract the sources JSON array from the inline script
-    // Pattern: sources: [{...}, {...}]
+    // First attempt: JWPlayer sources array (DonghuaPlanet/PlayDaku)
     const sourcesMatch = body.match(/sources\s*:\s*(\[[\s\S]*?\])\s*[,\n\r}]/);
-    if (!sourcesMatch) {
-      console.error(`[DonghuaPlanet] No sources found in embed page: ${embedUrl}`);
-      return null;
-    }
-
-    // The JSON is escaped with \/ — parse it
-    let sourcesJson = sourcesMatch[1];
-    sourcesJson = sourcesJson.replace(/\\\//g, '/');
-
-    let sources: Array<{ file: string; type: string; label: string }>;
-    try {
-      sources = JSON.parse(sourcesJson);
-    } catch (parseErr) {
-      console.error(`[DonghuaPlanet] Failed to parse sources JSON: ${parseErr}`);
-      return null;
-    }
-
-    if (!sources || sources.length === 0) {
-      console.error(`[DonghuaPlanet] Empty sources array for: ${embedUrl}`);
-      return null;
-    }
-
-    // Pick the best quality stream by preference order
-    for (const preferredQuality of QUALITY_PREFERENCE) {
-      const match = sources.find(s => s.label === preferredQuality);
-      if (match && match.file) {
-        // Extract subtitles if available
-        const subtitles = extractSubtitles(body);
-
-        return {
-          url: match.file,
-          quality: preferredQuality === 'Auto' ? 'Auto' : preferredQuality,
-          subtitles,
-        };
+    if (sourcesMatch) {
+      let sourcesJson = sourcesMatch[1].replace(/\\\//g, '/');
+      try {
+        const sources = JSON.parse(sourcesJson);
+        if (sources && sources.length > 0) {
+          for (const preferredQuality of QUALITY_PREFERENCE) {
+            const match = sources.find((s: any) => s.label === preferredQuality);
+            if (match && match.file) {
+              return {
+                url: match.file,
+                quality: preferredQuality === 'Auto' ? 'Auto' : preferredQuality,
+                subtitles: extractSubtitles(body),
+              };
+            }
+          }
+          const fallback = sources.find((s: any) => s.file);
+          if (fallback) {
+            return {
+              url: fallback.file,
+              quality: fallback.label || 'unknown',
+              subtitles: extractSubtitles(body),
+            };
+          }
+        }
+      } catch (parseErr) {
+        // Ignore parse error and fall through to regex
       }
     }
 
-    // Fallback: use the first source with a file URL
-    const fallback = sources.find(s => s.file);
-    if (fallback) {
+    // Second attempt: Direct regex for Rumble player config or other inline JSON
+    const sourceRegex = /"file"\s*:\s*"(https:[^"]+\.(?:mp4|m3u8)[^"]*)"/g;
+    let match;
+    const mp4Sources = [];
+    const m3u8Sources = [];
+
+    while ((match = sourceRegex.exec(body)) !== null) {
+        const fileUrl = match[1].replace(/\\\//g, '/');
+        const qualityMatch = fileUrl.match(/(\d{3,4})p/);
+        const quality = qualityMatch ? parseInt(qualityMatch[1]) : 0;
+
+        if (fileUrl.includes('.mp4')) {
+            mp4Sources.push({ url: fileUrl, quality });
+        } else if (fileUrl.includes('.m3u8')) {
+            m3u8Sources.push({ url: fileUrl, quality });
+        }
+    }
+
+    mp4Sources.sort((a, b) => b.quality - a.quality);
+    m3u8Sources.sort((a, b) => b.quality - a.quality);
+
+    // Prefer HLS
+    if (m3u8Sources.length > 0) {
+      const best = m3u8Sources[0];
       return {
-        url: fallback.file,
-        quality: fallback.label || 'unknown',
+        url: best.url,
+        quality: best.quality > 0 ? `${best.quality}p` : 'Auto',
         subtitles: extractSubtitles(body),
       };
     }
 
+    // Fallback to MP4
+    if (mp4Sources.length > 0) {
+      const best = mp4Sources[0];
+      return {
+        url: best.url,
+        quality: best.quality > 0 ? `${best.quality}p` : 'Unknown',
+        subtitles: extractSubtitles(body),
+      };
+    }
+
+    // Final fallback for Rumble: Try to build HLS playlist URL from embed ID
+    const embedIdMatch = embedUrl.match(/\/embed\/v([^/]+)/);
+    if (embedIdMatch) {
+        const embedId = embedIdMatch[1];
+        const mainUrl = new URL(embedUrl).origin;
+        const fallbackUrl = `${mainUrl}/hls-vod/v${embedId}/playlist.m3u8`;
+        return {
+            url: fallbackUrl,
+            quality: 'Auto',
+            subtitles: extractSubtitles(body),
+        };
+    }
+
+    console.error(`[DonghuaPlanet] No sources found in embed page: ${embedUrl}`);
     return null;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

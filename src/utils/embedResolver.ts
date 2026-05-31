@@ -29,6 +29,7 @@ const EXTRACTOR_MAP: Record<string, string> = {
   'maxstream': 'maxstream',
   'mixdrop': 'mixdrop',
   'ok.ru': 'okru',
+  'odnoklassniki.ru': 'okru',
   'sportsonline': 'sportsonline',
   'streamtape': 'streamtape',
   'streamwish': 'streamwish',
@@ -65,7 +66,7 @@ export async function resolveEmbed(
   const { siteUrl, serverLabel, providerName } = options;
 
   try {
-     // ── Dailymotion (standard embed) ─────────────────────────────────────
+    // ── Dailymotion (standard embed) ─────────────────────────────────────
     const dmMatch = embedUrl.match(/dailymotion\.com\/embed\/video\/([a-zA-Z0-9]+)/);
     if (dmMatch) {
       return resolveDM(dmMatch[1], providerName, options.userAgent);
@@ -171,11 +172,13 @@ function buildStreamResult(
       referer: embedUrl,
       origin: new URL(embedUrl).origin,
       userAgent,
+      maxRes: true,
     })
     : buildStreamProxyUrl(resolved.url, {
       referer: embedUrl,
       origin: new URL(embedUrl).origin,
       userAgent,
+      maxRes: true,
     });
 
   return {

@@ -296,8 +296,8 @@ const donghuaworldProvider: Provider = {
                 }
             });
 
-            // Resolve embeds to real video URLs (parallel, max 2 streams)
-            const resolvePromises = embeds.slice(0, 3).map(e =>
+            // Resolve embeds to real video URLs (parallel, max 8 streams to cover all servers)
+            const resolvePromises = embeds.slice(0, 8).map(e =>
                 resolveEmbed(e.url, {
                     siteUrl: SITE_CONFIG.mainUrl,
                     serverLabel: e.label,
@@ -306,7 +306,7 @@ const donghuaworldProvider: Provider = {
                 })
             );
             const resolved = await Promise.all(resolvePromises);
-            return resolved.filter((s): s is Stream => s !== null).slice(0, 2);
+            return resolved.filter((s): s is Stream => s !== null);
 
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : String(err);
