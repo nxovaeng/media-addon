@@ -23,7 +23,6 @@ import vidhideExtractor from './vidhide';
 import filesimExtractor from './filesim';
 import vidmolyExtractor from './vidmoly';
 import vtbeExtractor from './vtbe';
-import emturbovidExtractor from './emturbovid';
 import mp4uploadExtractor from './mp4upload';
 import bunnycdnExtractor from './bunnycdn';
 import vidstackExtractor from './vidstack';
@@ -41,7 +40,6 @@ const EXTRACTORS: Extractor[] = [
   filesimExtractor,
   vidmolyExtractor,
   vtbeExtractor,
-  emturbovidExtractor,
   mp4uploadExtractor,
   bunnycdnExtractor,
   vidstackExtractor,
