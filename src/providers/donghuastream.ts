@@ -1,7 +1,7 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { Provider, MediaItem, Stream, Meta } from '../types';
-import { resolveEmbed } from '../utils/embedResolver';
+import { resolveEmbed } from '../extractors';
 import { db } from '../utils/db';
 
 const SITE_CONFIG = {

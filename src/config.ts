@@ -10,6 +10,7 @@ const configSchema = z.object({
   MEDIAFLOW_PROXY_URL: z.string().optional(),
   MEDIAFLOW_API_PASSWORD: z.string().optional(),
   FEBBOX_TOKEN: z.string().optional(),
+  MIN_RESOLUTION: z.string().default('720'),
   ACCESS_TOKENS: z.string().optional(),
   ACTIVE_AGGREGATORS: z.string().optional(),
   REGION: z.enum(['all', 'mainland', 'overseas']).default('all'),

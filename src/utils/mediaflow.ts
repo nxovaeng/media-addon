@@ -4,9 +4,10 @@
  * Supports two proxy modes matching the MediaFlow Proxy standard API:
  *   1. HLS manifest proxy:  /proxy/hls/manifest.m3u8?d=<url>&h_referer=...
  *   2. Generic stream proxy: /proxy/stream?d=<url>&h_referer=...
+ *
+ * Video extraction logic has been moved to src/extractors/.
  */
 
-import axios from 'axios';
 import { config } from '../config';
 
 export interface MediaFlowOptions {
@@ -74,39 +75,3 @@ export function wrapProxyUrl(targetUrl: string, headers: Record<string, string> 
     maxRes: true,
   });
 }
-
-export interface ExtractorResponse {
-  url: string;
-  headers?: Record<string, string>;
-  is_hls?: boolean;
-}
-
-/**
- * Call the MediaFlow extractor API to resolve a video host embed URL.
- * Requires MEDIAFLOW_PROXY_URL to be set.
- */
-export async function resolveViaMediaflowExtractor(host: string, embedUrl: string): Promise<ExtractorResponse | null> {
-  if (!config.MEDIAFLOW_PROXY_URL) return null;
-
-  try {
-    const params = new URLSearchParams({
-      host: host.toLowerCase(),
-      d: embedUrl
-    });
-    if (config.MEDIAFLOW_API_PASSWORD) {
-      params.set('api_password', config.MEDIAFLOW_API_PASSWORD);
-    }
-    
-    const url = `${config.MEDIAFLOW_PROXY_URL}/extractor/video?${params.toString()}`;
-    const res = await axios.get(url, { timeout: 15000 });
-    
-    if (res.data && res.data.url) {
-      return res.data as ExtractorResponse;
-    }
-    return null;
-  } catch (err) {
-    console.error(`[MediaFlow] Extractor error for ${host} (${embedUrl}):`, err instanceof Error ? err.message : String(err));
-    return null;
-  }
-}
-

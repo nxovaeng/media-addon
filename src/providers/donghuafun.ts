@@ -1,7 +1,7 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { Provider, MediaItem, Stream, Meta } from '../types';
-import { resolveDM } from '../utils/embedResolver';
+import { resolveDM } from '../extractors';
 
 const SITE_CONFIG = {
   id: 'donghuafun',
