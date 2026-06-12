@@ -12,6 +12,7 @@ import { buildHlsProxyUrl, buildStreamProxyUrl } from '../utils/mediaflow';
 import { db } from '../utils/db';
 import { Stream } from '../types';
 import type { Extractor, ExtractorResult } from './types';
+import { DEFAULT_USER_AGENT } from './utils';
 
 // ── Import all extractors ─────────────────────────────────────────────────────
 import dailymotionExtractor, { resolveDailymotionHLS } from './dailymotion';
@@ -139,7 +140,9 @@ export async function resolveDM(
     url: buildHlsProxyUrl(resolved.url, {
       referer: resolved.headers?.['Referer'] || 'https://geo.dailymotion.com/',
       origin: resolved.headers?.['Origin'] || 'https://geo.dailymotion.com',
+      cookie: resolved.headers?.['Cookie'] || resolved.headers?.['cookie'],
       userAgent,
+      maxRes: true,
     }),
     name: `[${resolved.quality}] ${providerName}`,
     description: `Dailymotion · via ${resolved.quality === 'Auto' ? 'Auto' : resolved.quality}`,
@@ -163,11 +166,13 @@ export function buildStreamFromResolved(
         referer: embedUrl,
         origin: new URL(embedUrl).origin,
         userAgent,
+        maxRes: true,
       })
     : buildStreamProxyUrl(resolved.url, {
         referer: embedUrl,
         origin: new URL(embedUrl).origin,
         userAgent,
+        maxRes: true,
       });
 
   return {
@@ -191,13 +196,14 @@ function buildProxiedStream(
   const referer = result.headers?.['Referer'] || result.headers?.['referer'];
   const origin = result.headers?.['Origin'] || result.headers?.['origin'];
   const resolvedUA = result.headers?.['User-Agent'] || result.headers?.['user-agent'] || userAgent;
+  const cookie = result.headers?.['Cookie'] || result.headers?.['cookie'];
 
   let proxyUrl: string;
 
   if (config.MEDIAFLOW_PROXY_URL) {
     proxyUrl = result.isHls
-      ? buildHlsProxyUrl(result.url, { referer, origin, userAgent: resolvedUA })
-      : buildStreamProxyUrl(result.url, { referer, origin, userAgent: resolvedUA });
+      ? buildHlsProxyUrl(result.url, { referer, origin, userAgent: resolvedUA, maxRes: true, cookie })
+      : buildStreamProxyUrl(result.url, { referer, origin, userAgent: resolvedUA, maxRes: true, cookie });
   } else {
     proxyUrl = result.url;
   }

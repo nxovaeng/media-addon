@@ -55,6 +55,16 @@ export async function resolveDailymotionHLS(videoId: string): Promise<ExtractorR
     });
 
     const data = res.data;
+    const cookiesArray = res.headers['set-cookie'];
+    const cookieHeader = cookiesArray ? cookiesArray.map(c => c.split(';')[0]).join('; ') : '';
+
+    const streamHeaders: Record<string, string> = {
+      'Referer': 'https://geo.dailymotion.com/',
+      'Origin': 'https://geo.dailymotion.com',
+    };
+    if (cookieHeader) {
+      streamHeaders['Cookie'] = cookieHeader;
+    }
 
     // Handle geo-restricted responses containing the real video ID
     if (data?.error) {
@@ -96,12 +106,16 @@ export async function resolveDailymotionHLS(videoId: string): Promise<ExtractorR
       const chosen = hls || mp4;
 
       if (chosen?.url) {
-        const isHls = chosen.url.includes('.m3u8');
+        let finalUrl = chosen.url;
+        if (finalUrl.includes('#')) {
+          finalUrl = finalUrl.split('#')[0];
+        }
+        const isHls = finalUrl.includes('.m3u8');
         return {
-          url: chosen.url,
+          url: finalUrl,
           quality: `${q}p`,
           isHls,
-          headers: { 'Referer': 'https://geo.dailymotion.com/', 'Origin': 'https://geo.dailymotion.com' },
+          headers: streamHeaders,
         };
       }
     }
@@ -113,9 +127,14 @@ export async function resolveDailymotionHLS(videoId: string): Promise<ExtractorR
         e.type === 'application/x-mpegURL' || (e.url?.includes('.m3u8')),
       );
       if (hls?.url) {
+        let finalAutoUrl = hls.url;
+        if (finalAutoUrl.includes('#')) {
+          finalAutoUrl = finalAutoUrl.split('#')[0];
+        }
+
         // Resolve master playlist to lock a specific variant
-        const variant = await resolveHlsBestVariant(hls.url, {
-          headers: { 'Referer': 'https://geo.dailymotion.com/', 'Origin': 'https://geo.dailymotion.com' },
+        const variant = await resolveHlsBestVariant(finalAutoUrl, {
+          headers: streamHeaders,
           minResolution: minQuality,
         });
 
@@ -124,7 +143,7 @@ export async function resolveDailymotionHLS(videoId: string): Promise<ExtractorR
             url: variant.url,
             quality: `${variant.height}p`,
             isHls: true,
-            headers: { 'Referer': 'https://geo.dailymotion.com/', 'Origin': 'https://geo.dailymotion.com' },
+            headers: streamHeaders,
           };
         }
 
@@ -136,10 +155,10 @@ export async function resolveDailymotionHLS(videoId: string): Promise<ExtractorR
         const bestLabel = availableQualities.length > 0 ? `${availableQualities[0]}p` : '720p+';
 
         return {
-          url: hls.url,
+          url: finalAutoUrl,
           quality: bestLabel,
           isHls: true,
-          headers: { 'Referer': 'https://geo.dailymotion.com/', 'Origin': 'https://geo.dailymotion.com' },
+          headers: streamHeaders,
         };
       }
     }

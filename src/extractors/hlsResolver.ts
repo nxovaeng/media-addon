@@ -111,6 +111,11 @@ function parseVariants(content: string, baseUrl: string): HlsVariant[] {
 
     if (!variantUrl) continue;
 
+    // Strip URL fragments (#)
+    if (variantUrl.includes('#')) {
+      variantUrl = variantUrl.split('#')[0];
+    }
+
     // Resolve relative URL to absolute
     const absoluteUrl = resolveUrl(variantUrl, baseUrl);
 

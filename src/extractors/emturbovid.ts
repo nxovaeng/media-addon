@@ -45,7 +45,7 @@ const emturbovidExtractor: Extractor = {
       return [{ url: variant.url, quality: `${variant.height}p`, isHls: true, headers }];
     }
 
-    return [{ url: m3u8Url, quality: 'Auto', isHls: true, headers }];
+    return [{ url: m3u8Url, quality: 'Auto', isHls: m3u8Url.includes('.m3u8'), headers }];
   },
 };
 
