@@ -64,7 +64,8 @@ export class MetadataService {
         tmdbid: data.tmdb_id?.toString() || data.tmdbId?.toString(),
         imdbid: imdbId,
         aliases: Array.from(aliases),
-        year: data.year ? Number(data.year) : undefined
+        year: data.year ? Number(data.year) : undefined,
+        videos: data.videos
       };
     } catch (err: any) {
       if (err.response?.status === 404) {
@@ -103,6 +104,16 @@ export class MetadataService {
         console.warn(`[MetadataService] Could not fetch alternative titles for ${imdbId}`);
       }
 
+      let videos = undefined;
+      if (type === 'series') {
+        try {
+          const cmRes = await axios.get(`https://v3-cinemeta.strem.io/meta/series/${imdbId}.json`, { timeout: 4000 });
+          if (cmRes.data?.meta?.videos) {
+            videos = cmRes.data.meta.videos;
+          }
+        } catch (e) {}
+      }
+
       return {
         id: imdbId,
         type: type as 'movie' | 'series',
@@ -111,7 +122,8 @@ export class MetadataService {
         tmdbid: item.id?.toString(),
         imdbid: imdbId,
         aliases: Array.from(aliases),
-        year: new Date(item.release_date || item.first_air_date).getFullYear()
+        year: new Date(item.release_date || item.first_air_date).getFullYear(),
+        videos
       };
     } catch (err) {
       console.error(`[MetadataService] TMDB Error:`, err);
@@ -143,6 +155,16 @@ export class MetadataService {
 
       const imdbId = item.external_ids?.imdb_id || item.imdb_id;
 
+      let videos = undefined;
+      if (type === 'series' && imdbId) {
+        try {
+          const cmRes = await axios.get(`https://v3-cinemeta.strem.io/meta/series/${imdbId}.json`, { timeout: 4000 });
+          if (cmRes.data?.meta?.videos) {
+            videos = cmRes.data.meta.videos;
+          }
+        } catch (e) {}
+      }
+
       return {
         id: `tmdb${tmdbId}`,
         type: type as 'movie' | 'series',
@@ -154,7 +176,8 @@ export class MetadataService {
         poster: `https://image.tmdb.org/t/p/w500${item.poster_path}`,
         background: `https://image.tmdb.org/t/p/original${item.backdrop_path}`,
         description: item.overview,
-        year: item.release_date || item.first_air_date ? new Date(item.release_date || item.first_air_date).getFullYear() : undefined
+        year: item.release_date || item.first_air_date ? new Date(item.release_date || item.first_air_date).getFullYear() : undefined,
+        videos
       };
     } catch (err) {
       console.error(`[MetadataService] TMDB ID fetch failed for ${tmdbId}:`, err);

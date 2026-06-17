@@ -15,6 +15,7 @@ export interface MediaItem extends Meta {
   year?: number;
   season?: number;
   episode?: number;
+  videos?: any[];
 }
 
 /**

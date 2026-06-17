@@ -109,6 +109,7 @@ builder.defineMetaHandler(async ({ type, id, config }) => {
       background: meta.background || '',
       description: meta.description || '',
       releaseInfo: meta.year ? `${meta.year}` : undefined, // Standard year field
+      videos: meta.videos,
       links: meta.imdbid ? [
         {
           name: "IMDb",
