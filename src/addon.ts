@@ -24,7 +24,8 @@ const manifest = {
       name: config.displayName,
       extra: [
         { name: 'search', isRequired: false },
-        { name: 'skip', isRequired: false }
+        { name: 'skip', isRequired: false },
+        { name: 'genre', isRequired: false, options: ['中国大陆', '中国香港', '中国台湾', '美国', '日本', '韩国'] }
       ]
     }))
   ),

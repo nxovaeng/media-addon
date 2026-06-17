@@ -6,7 +6,10 @@ import { MediaItem } from '../types';
 export class MetadataService {
   private tmdb = axios.create({
     baseURL: 'https://api.themoviedb.org/3',
-    params: { api_key: config.TMDB_API_KEY }
+    params: { 
+      api_key: config.TMDB_API_KEY,
+      language: 'zh-CN'
+    }
   });
 
   public async getMeta(id: string, type: string): Promise<MediaItem | null> {

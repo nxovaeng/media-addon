@@ -10,7 +10,10 @@ const SITE_CONFIG = {
 
 const tmdb = axios.create({
   baseURL: 'https://api.themoviedb.org/3',
-  params: { api_key: config.TMDB_API_KEY }
+  params: { 
+    api_key: config.TMDB_API_KEY,
+    language: 'zh-CN'
+  }
 });
 
 function buildImageUrl(path: string | undefined): string {
@@ -39,10 +42,11 @@ function extractAliases(item: any, type: string): string[] {
 
 function buildMovieMeta(item: any): Meta {
   const name = item.title || item.name || 'Unknown Movie';
+  const mark = item.origin_country && item.origin_country.length > 0 ? `[${item.origin_country[0]}] ` : '[TMDB] ';
   return {
     id: `tmdb${item.id}`,
     type: 'movie' as const,
-    name: name,
+    name: `${mark}${name}`,
     title: name,
     poster: buildImageUrl(item.poster_path || item.poster),
     background: buildImageUrl(item.backdrop_path || item.backdrop),
@@ -54,10 +58,11 @@ function buildMovieMeta(item: any): Meta {
 
 function buildTvMeta(item: any): Meta {
   const name = item.name || item.title || 'Unknown Series';
+  const mark = item.origin_country && item.origin_country.length > 0 ? `[${item.origin_country[0]}] ` : '[TMDB] ';
   return {
     id: `tmdb${item.id}`,
     type: 'series' as const,
-    name: name,
+    name: `${mark}${name}`,
     title: name,
     poster: buildImageUrl(item.poster_path || item.poster),
     background: buildImageUrl(item.backdrop_path || item.backdrop),
@@ -89,7 +94,7 @@ function parseTmdbFromHtml(html: string, type: 'movie' | 'series', maxItems = 20
     metas.push({
       id: `tmdb${tmdbId}`,
       type: type as 'movie' | 'series',
-      name: title,
+      name: `[TMDB] ${title}`,
       title: title,
       poster: buildImageUrl($(el).find('img').attr('src') || $(el).find('img').attr('data-src')),
       posterShape: 'poster',
@@ -103,10 +108,29 @@ function parseTmdbFromHtml(html: string, type: 'movie' | 'series', maxItems = 20
 
 export async function getTmdbHomeCatalog(type: 'movie' | 'series', extra: any): Promise<Meta[]> {
   const page = extra?.skip ? Math.floor(extra.skip / 20) + 1 : 1;
+  const regionName = extra?.genre;
+  
+  const regionMap: Record<string, string> = {
+    '中国大陆': 'CN',
+    '中国香港': 'HK',
+    '中国台湾': 'TW',
+    '美国': 'US',
+    '日本': 'JP',
+    '韩国': 'KR'
+  };
+  const regionCode = regionName ? regionMap[regionName] : null;
   
   try {
-    const endpoint = type === 'movie' ? '/movie/popular' : '/tv/popular';
-    const res = await tmdb.get(endpoint, { params: { page } });
+    let endpoint = type === 'movie' ? '/movie/popular' : '/tv/popular';
+    const params: any = { page };
+
+    if (regionCode) {
+      endpoint = type === 'movie' ? '/discover/movie' : '/discover/tv';
+      params.with_origin_country = regionCode;
+      params.sort_by = 'popularity.desc';
+    }
+
+    const res = await tmdb.get(endpoint, { params });
     
     if (res.data && Array.isArray(res.data.results)) {
       return res.data.results.map((item: any) => type === 'movie' ? buildMovieMeta(item) : buildTvMeta(item));
@@ -116,9 +140,12 @@ export async function getTmdbHomeCatalog(type: 'movie' | 'series', extra: any): 
   }
 
   try {
-    const url = `${SITE_CONFIG.tmdbOrg}/${type === 'movie' ? 'movie' : 'tv'}`;
+    const url = `${SITE_CONFIG.tmdbOrg}/${type === 'movie' ? 'movie' : 'tv'}?language=zh-CN`;
     const res = await axios.get(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+      headers: { 
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
+      }
     });
     return parseTmdbFromHtml(res.data, type);
   } catch (err) {
